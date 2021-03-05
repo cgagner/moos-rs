@@ -2,15 +2,19 @@
 // 
 
 use core::mem;
-use std::io::Error;
+use std::{io::Error, str::from_utf8};
+use core::result::Result;
+use core::convert::TryInto;
+
+pub struct DecodeError ();
 
 pub struct Message {
-    pub length: i32, // @TODO: the length should probably go away since it is just calculated
     pub id: i32,
     pub message_type: MessageType,
     pub data_type: DataType,
     pub double_value: f64,
     pub double_value2: f64,
+    // Switch from using string to a Vec<u8> to handle 
     pub string_value: String,
     pub key: String,
     pub time: f64,
@@ -26,14 +30,14 @@ type MessageList = Vec<Message>;
  * id (i32)
  * message_type (i8)
  * data_type (i8)
- * source [u8] (std::string)
- * source_aux [u8] (str::string)
+ * source (i32) (std::string)
+ * source_aux (i32) (str::string)
  * originating_community [u8] (std::string)
- * key [u8] (std::string)
+ * key (i32) (std::string)
  * time (f64)
  * double_value (f64)
  * double_value2 (f64)
- * string_value - [u8]
+ * string_value - (i32) (std::string)
  *
  */
 impl Message {
@@ -42,7 +46,6 @@ impl Message {
         S: Into<String>,
     {
         Message {
-            length: 0,                  //
             id: 0,                      //
             message_type: message_type, //
             data_type: DataType::Double,
@@ -56,6 +59,18 @@ impl Message {
             originating_community: String::new(),
         }
     }
+    ///
+    ///
+    /// 
+    pub fn decode_slice(&mut self, buffer: &mut [u8]) -> Result<(), DecodeError> {
+        if buffer.len() < 4 {
+            return Err(DecodeError());
+        }
+        let size = i32::from_le_bytes(buffer[0..3].try_into().unwrap());
+        
+        
+        Ok(())
+    }
 
     // @TODO: Need a encode_string and decode_string
     pub fn encode_string(buffer: &mut [u8], s: &str) -> usize {
@@ -63,17 +78,30 @@ impl Message {
     }
 
     fn decode_string(buffer: &[u8]) -> String {
+        let size = i32::from_le_bytes(buffer[0..3].try_into().unwrap());
+        if let Err(e)= std::str::from_utf8(buffer){
+            // TODO: error
+        }
+
         String::new()
     }
 
     /// Returns the size of the message when serialized
     pub fn get_size(&self) -> i32 {
-        // (mem::size_of(self.id) +
-        //mem::size_of(self.message_type)) as i32
-
-        (mem::size_of_val(&self.id) 
-        + mem::size_of_val(&self.double_value)) as i32
-        
+        (
+            // TODO: Need to add the length here?
+            mem::size_of_val(&self.id) 
+             + mem::size_of::<i8>() // message type 
+             + mem::size_of::<i8>() // data type 
+             + mem::size_of::<i32>() + self.source.len()
+             + mem::size_of::<i32>() + self.source_aux.len() 
+             + mem::size_of::<i32>() + self.string_value.len()
+             + mem::size_of::<i32>() + self.key.len()
+             + mem::size_of_val(&self.time)
+             + mem::size_of_val(&self.double_value)
+             + mem::size_of_val(&self.double_value2)
+             + 1 + self.string_value.len()
+        ) as i32
     }
 
 
@@ -181,7 +209,7 @@ impl DataType {
 mod tests {
     #[test]
     fn test_data_type() {
-        use crate::comms::DataType;
+        use crate::message::DataType;
         assert_eq!(
             DataType::Binary,
             DataType::from_byte(DataType::Binary.to_byte())
