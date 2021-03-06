@@ -3,10 +3,11 @@
 
 use core::mem;
 use std::{io::Error, str::from_utf8};
-use core::result::Result;
 use core::convert::TryInto;
+use crate::errors::{InsufficientSpaceError, Result};
 
-pub struct DecodeError ();
+use super::errors;
+
 
 pub struct Message {
     pub id: i32,
@@ -32,7 +33,7 @@ type MessageList = Vec<Message>;
  * data_type (i8)
  * source (i32) (std::string)
  * source_aux (i32) (str::string)
- * originating_community [u8] (std::string)
+ * originating_community (i32) (std::string)
  * key (i32) (std::string)
  * time (f64)
  * double_value (f64)
@@ -59,32 +60,39 @@ impl Message {
             originating_community: String::new(),
         }
     }
-    ///
+
+
+    /// Decode a Message from a [u8] slice
     ///
     /// 
-    pub fn decode_slice(&mut self, buffer: &mut [u8]) -> Result<(), DecodeError> {
-        if buffer.len() < 4 {
-            return Err(DecodeError());
-        }
-        let size = i32::from_le_bytes(buffer[0..3].try_into().unwrap());
+    pub fn decode_slice(&mut self, buffer: &[u8]) -> errors::Result<usize> {
+        let mut reader = Reader::new(buffer);
+        /* 
+        * source_aux (i32) (str::string)
+        * originating_community [i32] (std::string)
+        * key (i32) (std::string)
+        * time (f64)
+        * double_value (f64)
+        * double_value2 (f64)
+        * string_value - (i32) (std::string)
+        */
+
+        let length = reader.read_i32()?;
+        let id = reader.read_i32()?;
+        let message_type = MessageType::from_byte(reader.read_i8()?);
+        let data_type = DataType::from_byte(reader.read_i8()?);
+        let source = reader.read_string()?;
+        let source_aux = reader.read_string()?;
+        let originating_community = reader.read_string();
+        let key = reader.read_string();
+        // time
+        // double_value
+        // double_value2
+        let string_value = reader.read_string();
         
-        
-        Ok(())
+        Ok(reader.bytes_read)
     }
 
-    // @TODO: Need a encode_string and decode_string
-    pub fn encode_string(buffer: &mut [u8], s: &str) -> usize {
-        0
-    }
-
-    fn decode_string(buffer: &[u8]) -> String {
-        let size = i32::from_le_bytes(buffer[0..3].try_into().unwrap());
-        if let Err(e)= std::str::from_utf8(buffer){
-            // TODO: error
-        }
-
-        String::new()
-    }
 
     /// Returns the size of the message when serialized
     pub fn get_size(&self) -> i32 {
@@ -205,6 +213,65 @@ impl DataType {
     }
 }
 
+
+
+enum Endian {
+    LittleEndian,
+    BigEndian,
+    NativeEndian,
+}
+
+struct Reader<'a> {
+    bytes_read: usize,
+    buffer: &'a [u8],
+}
+
+impl<'a> Reader<'a> {
+    /// Create a new reader for a byte buffer
+    fn new(buffer: &'a [u8]) ->  Self {
+        Reader{bytes_read: 0, buffer}
+    }
+
+    fn read_i8(&mut self) -> errors::Result<i8> {
+        if self.buffer.len() - self.bytes_read < core::mem::size_of::<i8>() {
+            return Err(InsufficientSpaceError);
+        }
+        let value = self.buffer[self.bytes_read] as i8;
+        self.bytes_read += core::mem::size_of::<i8>();
+        Ok(value)
+    }
+
+    fn read_i32(&mut self) -> errors::Result<i32> {
+        if self.buffer.len() - self.bytes_read < core::mem::size_of::<i32>() {
+            return Err(InsufficientSpaceError);
+        }
+        let buf: &[u8; 4] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<i32>())].try_into() {
+            Ok(buf) => buf,
+            Err(e) => return Err(errors::Error::Conversion(e)),
+        };
+        let value = i32::from_le_bytes(*buf);
+        self.bytes_read += core::mem::size_of::<i32>();
+        Ok(value)
+    }
+
+    fn read_string(&mut self) -> errors::Result<String> {
+        let length = self.read_i32()?;
+        if self.buffer.len() - self.bytes_read < (length as usize) {
+            return Err(InsufficientSpaceError);
+        }
+        let s = match std::str::from_utf8(&self.buffer[self.bytes_read..=(self.bytes_read + length as usize)]) {
+            Ok(s) => s,
+            Err(e) => return Err(errors::Error::Utf8(e)),
+        };
+        Ok(String::from(s))
+    }
+
+    fn read_vector(&mut self) -> errors::Result<Vec<u8>> {
+        Ok(Vec::<u8>::new())
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -228,7 +295,7 @@ mod tests {
 struct Packet {}
 
 impl Packet {
-    pub fn encode(message_list: MessageList) -> Result<bool, Error> {
+    pub fn encode(message_list: MessageList) -> errors::Result<bool> {
         let buffer_size: i32 = message_list.iter().map(|message| message.get_size()).sum();
 
         let mut num_messages: u32 = 0;
@@ -248,3 +315,4 @@ impl Packet {
         Ok(true)
     }
 }
+
