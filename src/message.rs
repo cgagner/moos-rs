@@ -85,9 +85,9 @@ impl Message {
         let source_aux = reader.read_string()?;
         let originating_community = reader.read_string();
         let key = reader.read_string();
-        // time
-        // double_value
-        // double_value2
+        let time = reader.read_f64();
+        let double_value = reader.read_f64();
+        let double_value2 = reader.read_f64();
         let string_value = reader.read_string();
         
         Ok(reader.bytes_read)
@@ -245,12 +245,25 @@ impl<'a> Reader<'a> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<i32>() {
             return Err(InsufficientSpaceError);
         }
-        let buf: &[u8; 4] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<i32>())].try_into() {
+        let buf: &[u8; core::mem::size_of::<i32>()] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<i32>())].try_into() {
             Ok(buf) => buf,
             Err(e) => return Err(errors::Error::Conversion(e)),
         };
         let value = i32::from_le_bytes(*buf);
         self.bytes_read += core::mem::size_of::<i32>();
+        Ok(value)
+    }
+
+    fn read_f64(&mut self) -> errors::Result<f64> {
+        if self.buffer.len() - self.bytes_read < core::mem::size_of::<f64>() {
+            return Err(InsufficientSpaceError);
+        }
+        let buf: &[u8; core::mem::size_of::<f64>()] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<f64>())].try_into() {
+            Ok(buf) => buf,
+            Err(e) => return Err(errors::Error::Conversion(e)),
+        };
+        let value = f64::from_le_bytes(*buf);
+        self.bytes_read += core::mem::size_of::<f64>();
         Ok(value)
     }
 
