@@ -67,15 +67,6 @@ impl Message {
     /// 
     pub fn decode_slice(&mut self, buffer: &[u8]) -> errors::Result<usize> {
         let mut reader = Reader::new(buffer);
-        /* 
-        * source_aux (i32) (str::string)
-        * originating_community [i32] (std::string)
-        * key (i32) (std::string)
-        * time (f64)
-        * double_value (f64)
-        * double_value2 (f64)
-        * string_value - (i32) (std::string)
-        */
 
         let length = reader.read_i32()?;
         let id = reader.read_i32()?;
@@ -93,6 +84,30 @@ impl Message {
         Ok(reader.bytes_read)
     }
 
+    pub fn encode_slice(&self, buffer: &mut [u8]) -> errors::Result<usize> {
+        let len = self.get_size();
+        // Check that the buffer has enough size to store the message
+        if buffer.len() < (len as usize) {
+            return Err(InsufficientSpaceError);
+        }
+        let mut writer = Writer::new(buffer);
+        
+        writer.write_i32(len)?;
+        writer.write_i32(self.id)?;
+        writer.write_i8(self.message_type.to_byte())?;
+        writer.write_i8(self.data_type.to_byte())?;
+        writer.write_string(&self.source)?;
+        writer.write_string(&self.source_aux)?;
+        writer.write_string(&self.originating_community)?;
+        writer.write_string(&self.key)?;
+        writer.write_f64(self.time)?;
+        writer.write_f64(self.double_value)?;
+        writer.write_f64(self.double_value2)?;
+        // TODO: This should check the type and write a vector if it is binary
+        writer.write_string(&self.string_value)?;
+
+        Ok(writer.bytes_written)
+    }
 
     /// Returns the size of the message when serialized
     pub fn get_size(&self) -> i32 {
@@ -245,7 +260,7 @@ impl<'a> Reader<'a> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<i32>() {
             return Err(InsufficientSpaceError);
         }
-        let buf: &[u8; core::mem::size_of::<i32>()] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<i32>())].try_into() {
+        let buf: &[u8; core::mem::size_of::<i32>()] = match self.buffer[self.bytes_read..(self.bytes_read + core::mem::size_of::<i32>())].try_into() {
             Ok(buf) => buf,
             Err(e) => return Err(errors::Error::Conversion(e)),
         };
@@ -258,7 +273,7 @@ impl<'a> Reader<'a> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<f64>() {
             return Err(InsufficientSpaceError);
         }
-        let buf: &[u8; core::mem::size_of::<f64>()] = match self.buffer[self.bytes_read..=(self.bytes_read + core::mem::size_of::<f64>())].try_into() {
+        let buf: &[u8; core::mem::size_of::<f64>()] = match self.buffer[self.bytes_read..(self.bytes_read + core::mem::size_of::<f64>())].try_into() {
             Ok(buf) => buf,
             Err(e) => return Err(errors::Error::Conversion(e)),
         };
@@ -272,38 +287,52 @@ impl<'a> Reader<'a> {
         if self.buffer.len() - self.bytes_read < (length as usize) {
             return Err(InsufficientSpaceError);
         }
-        let s = match std::str::from_utf8(&self.buffer[self.bytes_read..=(self.bytes_read + length as usize)]) {
+        let s = match std::str::from_utf8(&self.buffer[self.bytes_read..(self.bytes_read + length as usize)]) {
             Ok(s) => s,
             Err(e) => return Err(errors::Error::Utf8(e)),
         };
+        self.bytes_read += (length as usize);
         Ok(String::from(s))
     }
 
     fn read_vector(&mut self) -> errors::Result<Vec<u8>> {
+        // TODO
         Ok(Vec::<u8>::new())
     }
 }
 
+struct Writer<'a> {
+    bytes_written: usize,
+    buffer: &'a mut [u8],
+}
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_data_type() {
-        use crate::message::DataType;
-        assert_eq!(
-            DataType::Binary,
-            DataType::from_byte(DataType::Binary.to_byte())
-        );
-        assert_eq!(
-            DataType::Double,
-            DataType::from_byte(DataType::Double.to_byte())
-        );
-        assert_eq!(
-            DataType::String,
-            DataType::from_byte(DataType::String.to_byte())
-        );
+impl <'a> Writer<'a> {
+    fn new(buffer: &'a mut [u8]) ->  Self {
+        Writer{bytes_written: 0, buffer}
+    }
+
+    fn write_i8(&mut self, value: i8) -> errors::Result<usize> {
+        Ok(0)
+    }
+
+    fn write_i32(&mut self, value: i32) -> errors::Result<usize> {
+        Ok(0)
+    }
+
+    fn write_f64(&mut self, value: f64) -> errors::Result<usize> {
+        Ok(0)
+    }
+
+    fn write_string(&mut self, value: &str) -> errors::Result<usize> {
+        Ok(0)
+    }
+
+    fn write_vector(&mut self, value: &[u8]) -> errors::Result<usize> {
+        Ok(0)
     }
 }
+
+
 
 struct Packet {}
 
@@ -329,3 +358,78 @@ impl Packet {
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Tests
+
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_data_type() {
+        use crate::message::DataType;
+        assert_eq!(
+            DataType::Binary,
+            DataType::from_byte(DataType::Binary.to_byte())
+        );
+        assert_eq!(
+            DataType::Double,
+            DataType::from_byte(DataType::Double.to_byte())
+        );
+        assert_eq!(
+            DataType::String,
+            DataType::from_byte(DataType::String.to_byte())
+        );
+    }
+
+    #[test]
+    fn test_reader() {
+        use crate::message::Reader;
+        use crate::errors::*;
+        
+        let b: i8 = 10;
+        let buf = vec![10,20,30];
+        let mut rdr = Reader::new(&buf[..]);
+        let r = rdr.read_i32();
+
+        match r {
+            Ok(_) => assert!(false),
+            Err(e) => match e {
+                Error::Serialization(ee) => match ee {
+                    SerializationError::InsufficientSpace() => assert!(true),
+                    _ => assert!(false),
+                }
+                _ => assert!(false),
+            }
+        };
+        assert_eq!(rdr.bytes_read, 0);
+
+        assert_eq!(rdr.read_i8().unwrap(), 10);
+        assert_eq!(rdr.read_i8().unwrap(), 20);
+        assert_eq!(rdr.read_i8().unwrap(), 30);
+        assert_eq!(rdr.bytes_read, 3);
+
+        let i: i32 = 8;
+        let buf = vec![8,0,0,0];
+        let mut rdr = Reader::new(&buf[..]);
+        let ii = rdr.read_i32().unwrap();
+        assert_eq!(i, ii);
+        assert_eq!(rdr.bytes_read, 4);
+
+
+        let d: f64 = 3.14159;
+        let buf = d.to_le_bytes().to_vec();
+        let mut rdr = Reader::new(&buf[..]);
+        assert_eq!(d, rdr.read_f64().unwrap());
+        assert_eq!(rdr.bytes_read, 8);
+        
+
+        let s = String::from("asdf💖");
+
+        let buf = vec![8, 0, 0, 0, 97, 115, 100, 102, 240, 159, 146, 150];
+        let mut rdr = Reader::new(&buf[..]);
+        let ss = rdr.read_string().unwrap();
+        
+        assert_eq!(s, ss);
+        assert_eq!(rdr.bytes_read, 12);
+    }
+}
