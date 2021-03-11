@@ -283,21 +283,27 @@ impl<'a> Reader<'a> {
     }
 
     fn read_string(&mut self) -> errors::Result<String> {
-        let length = self.read_i32()?;
-        if self.buffer.len() - self.bytes_read < (length as usize) {
+        let length = self.read_i32()? as usize;
+        if self.buffer.len() - self.bytes_read < length {
             return Err(InsufficientSpaceError);
         }
-        let s = match std::str::from_utf8(&self.buffer[self.bytes_read..(self.bytes_read + length as usize)]) {
+        let s = match std::str::from_utf8(&self.buffer[self.bytes_read..(self.bytes_read + length)]) {
             Ok(s) => s,
             Err(e) => return Err(errors::Error::Utf8(e)),
         };
-        self.bytes_read += (length as usize);
+        self.bytes_read += length;
         Ok(String::from(s))
     }
 
     fn read_vector(&mut self) -> errors::Result<Vec<u8>> {
-        // TODO
-        Ok(Vec::<u8>::new())
+        let length = self.read_i32()? as usize;
+        if self.buffer.len() - self.bytes_read < length {
+            return Err(InsufficientSpaceError);
+        }
+        let mut v = Vec::new();
+        v.extend_from_slice(&self.buffer[self.bytes_read..(self.bytes_read + length)]);
+        self.bytes_read += length;
+        Ok(v)
     }
 }
 
@@ -431,5 +437,12 @@ mod tests {
         
         assert_eq!(s, ss);
         assert_eq!(rdr.bytes_read, 12);
+
+        let v = vec![97, 115, 100, 102, 240, 159, 146, 150];
+        let buf = vec![8, 0, 0, 0, 97, 115, 100, 102, 240, 159, 146, 150];
+        let mut rdr = Reader::new(&buf[..]);
+        let vv = rdr.read_vector().unwrap();
+        assert_eq!(vv.len(), 8);
+        assert_eq!(v, vv);
     }
 }
