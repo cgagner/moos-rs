@@ -1,14 +1,11 @@
-use std::str::Utf8Error;
-use core::result;
 use core::array::TryFromSliceError;
-
-
-
+use core::result;
+use std::str::Utf8Error;
 
 #[derive(Debug)]
 pub enum SerializationError {
     InsufficientSpace(),
-    Invalid()
+    Invalid(),
 }
 
 #[derive(Debug)]
@@ -21,4 +18,5 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub const InsufficientSpaceError: Error  = Error::Serialization(SerializationError::InsufficientSpace()); 
+pub const InsufficientSpaceError: Error =
+    Error::Serialization(SerializationError::InsufficientSpace());
