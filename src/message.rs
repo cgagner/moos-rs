@@ -318,15 +318,30 @@ impl <'a> Writer<'a> {
     }
 
     fn write_i8(&mut self, value: i8) -> errors::Result<usize> {
-        Ok(0)
+        if self.bytes_written + core::mem::size_of::<i8>() > self.buffer.len(){
+            return Err(errors::InsufficientSpaceError);
+        }
+        self.buffer[self.bytes_written] = value as u8;
+        self.bytes_written += core::mem::size_of::<i8>();
+        Ok(core::mem::size_of::<i8>())
     }
 
     fn write_i32(&mut self, value: i32) -> errors::Result<usize> {
-        Ok(0)
+        if self.bytes_written + core::mem::size_of::<i32>() > self.buffer.len(){
+            return Err(errors::InsufficientSpaceError);
+        }
+        self.buffer[self.bytes_written..(self.bytes_written + core::mem::size_of::<i32>())].copy_from_slice(&value.to_le_bytes());
+        self.bytes_written += core::mem::size_of::<i32>();
+        Ok(core::mem::size_of::<i32>())
     }
 
     fn write_f64(&mut self, value: f64) -> errors::Result<usize> {
-        Ok(0)
+        if self.bytes_written + core::mem::size_of::<f64>() > self.buffer.len(){
+            return Err(errors::InsufficientSpaceError);
+        }
+        self.buffer[self.bytes_written..(self.bytes_written + core::mem::size_of::<f64>())].copy_from_slice(&value.to_le_bytes());
+        self.bytes_written += core::mem::size_of::<f64>();
+        Ok(core::mem::size_of::<f64>())
     }
 
     fn write_string(&mut self, value: &str) -> errors::Result<usize> {
@@ -392,7 +407,6 @@ mod tests {
         use crate::message::Reader;
         use crate::errors::*;
         
-        let b: i8 = 10;
         let buf = vec![10,20,30];
         let mut rdr = Reader::new(&buf[..]);
         let r = rdr.read_i32();
@@ -444,5 +458,58 @@ mod tests {
         let vv = rdr.read_vector().unwrap();
         assert_eq!(vv.len(), 8);
         assert_eq!(v, vv);
+    }
+
+    #[test]
+    fn test_writer() {
+
+        use crate::message::Writer;
+        use crate::errors::*;
+
+        let mut buffer: Vec<u8> = vec![0; 4];
+        let mut writer = Writer::new(&mut buffer);
+
+        assert_eq!(writer.write_i8(-1).unwrap(), 1);
+        assert_eq!(writer.write_i8(10).unwrap(), 1);
+        assert_eq!(writer.write_i8(-128).unwrap(), 1);
+        assert_eq!(writer.write_i8(127).unwrap(), 1);
+
+        assert_eq!(writer.bytes_written, 4);
+        // This should fail
+        if let Ok(i) = writer.write_i8(-1) {
+            assert!(true);
+        }
+        assert_eq!(writer.bytes_written, 4);
+
+        let b2: Vec<u8> = vec![0b1111_1111, 10, 0b1000_0000, 127];
+        assert_eq!(buffer, b2);
+
+
+        let mut buffer: Vec<u8> = vec![0; 8];
+        let mut writer = Writer::new(&mut buffer);
+
+        assert_eq!(writer.write_i32(8).unwrap(), 4);
+        assert_eq!(writer.write_i32(-123145).unwrap(), 4);
+        assert_eq!(writer.bytes_written, 8);
+
+        if let Ok(i) = writer.write_i32(134) {
+            assert!(true);
+        }
+
+        assert_eq!(buffer, vec![0x8, 0x0, 0x0, 0x0, 0xF7, 0x1E, 0xFE, 0xFF]);
+
+        let mut buffer: Vec<u8> = vec![0; 16];
+        let mut writer = Writer::new(&mut buffer);
+
+        assert_eq!(writer.write_f64(-20391.0).unwrap(), 8);
+        assert_eq!(writer.write_f64(2911204.1231).unwrap(), 8);
+        assert_eq!(writer.bytes_written, 16);
+
+        if let Ok(i) = writer.write_f64(98723.2342) {
+            assert!(true);
+        }
+
+        assert_eq!(buffer, vec![0x00, 0x00, 0x00, 0x00, 0xc0, 0xe9, 0xd3, 0xc0,
+            0xa5, 0xbd, 0xc1, 0x0f, 0xf2, 0x35, 0x46, 0x41 ]);
     }
 }
