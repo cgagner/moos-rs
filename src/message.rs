@@ -3,27 +3,33 @@
 
 use crate::errors::{InsufficientSpaceError, Result};
 use core::convert::TryInto;
+use core::marker::PhantomData;
 use core::mem;
-use std::{io::Error, str::from_utf8};
+use std::{collections::btree_map::Values, io::Error, str::from_utf8};
 
 use super::errors;
 
-pub struct Message {
-    pub id: i32,
-    pub message_type: MessageType,
-    pub data_type: DataType,
-    pub double_value: f64,
-    pub double_value2: f64,
-    // Switch from using string to a Vec<u8> to handle
-    pub string_value: String,
-    pub key: String,
-    pub time: f64,
-    pub source: String,
-    pub source_aux: String,
-    pub originating_community: String,
+pub(crate) enum Data {
+    String(String),
+    Binary(Vec<u8>),
 }
 
-type MessageList = Vec<Message>;
+pub struct Message<'m> {
+    pub(crate) id: i32,
+    pub(crate) message_type: MessageType,
+    pub(crate) data_type: DataType,
+    pub(crate) double_value: f64,
+    pub(crate) double_value2: f64,
+    pub(crate) data: Data,
+    pub(crate) string_value: &'m str,
+    pub(crate) key: String,
+    pub(crate) time: f64,
+    pub(crate) source: String,
+    pub(crate) source_aux: String,
+    pub(crate) originating_community: String,
+}
+
+type MessageList<'m> = Vec<Message<'m>>;
 
 /*
  * length (i32)
@@ -40,7 +46,7 @@ type MessageList = Vec<Message>;
  * string_value - (i32) (std::string)
  *
  */
-impl Message {
+impl<'m> Message<'m> {
     pub fn new<S>(message_type: MessageType, key: S) -> Self
     where
         S: Into<String>,
@@ -51,7 +57,8 @@ impl Message {
             data_type: DataType::Double,
             double_value: 0.0,
             double_value2: 0.0,
-            string_value: String::new(),
+            data: Data::Binary(Vec::new()),
+            string_value: "",
             time: 0.0,
             key: key.into(),
             source: String::new(),
@@ -60,26 +67,83 @@ impl Message {
         }
     }
 
+    pub fn data_type(&self) -> DataType {
+        self.data_type
+    }
+
+    pub fn key(&self) -> &str {
+        self.key.as_str()
+    }
+
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    pub fn source(&self) -> &str {
+        self.source.as_str()
+    }
+
+    pub fn source_aux(&self) -> &str {
+        self.source_aux.as_str()
+    }
+
+    pub fn value(&self) -> ValueType {
+        // match self.data_type {
+        //     DataType::Double => ValueType::Double(self.double_value),
+        //     DataType::String => ValueType::String(self.string_value),
+        //     DataType::Binary => ValueType::Binary(self.data.as_slice()),
+        // }
+
+        match &self.data {
+            Data::Binary(b) => ValueType::Binary(b.as_slice()),
+            Data::String(s) => ValueType::String(s.as_str()),
+        }
+    }
+
     /// Decode a Message from a [u8] slice
     ///
     ///
-    pub fn decode_slice(&mut self, buffer: &[u8]) -> errors::Result<usize> {
+    pub fn decode_slice(buffer: &[u8]) -> errors::Result<(Message, usize)> {
         let mut reader = Reader::new(buffer);
 
-        let length = reader.read_i32()?;
+        let length = reader.read_i32()? as usize;
+        if buffer.len() + core::mem::size_of::<i32>() < length {
+            return Err(errors::InsufficientSpaceError);
+        }
+
         let id = reader.read_i32()?;
         let message_type = MessageType::from_byte(reader.read_i8()?);
         let data_type = DataType::from_byte(reader.read_i8()?);
         let source = reader.read_string()?;
         let source_aux = reader.read_string()?;
-        let originating_community = reader.read_string();
-        let key = reader.read_string();
-        let time = reader.read_f64();
-        let double_value = reader.read_f64();
-        let double_value2 = reader.read_f64();
-        let string_value = reader.read_string();
+        let originating_community = reader.read_string()?;
+        let key = reader.read_string()?;
+        let time = reader.read_f64()?;
+        let double_value = reader.read_f64()?;
+        let double_value2 = reader.read_f64()?;
 
-        Ok(reader.bytes_read)
+        let data = match data_type {
+            DataType::String => Data::String(reader.read_string()?),
+            _ => Data::Binary(reader.read_vector()?),
+        };
+
+        let mut msg = Message {
+            id,
+            message_type,
+            data_type,
+            double_value,
+            double_value2,
+            data,
+            string_value: "",
+            time,
+            key,
+            source,
+            source_aux,
+            originating_community,
+        };
+
+        //Err(errors::InsufficientSpaceError)
+        Ok((msg, reader.bytes_read))
     }
 
     pub fn encode_slice(&self, buffer: &mut [u8]) -> errors::Result<usize> {
@@ -127,7 +191,7 @@ impl Message {
 }
 
 /// Type of the message.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum MessageType {
     Null,
     Anonymous,
@@ -194,7 +258,7 @@ impl MessageType {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum DataType {
     Double,
     String,
@@ -222,10 +286,10 @@ impl DataType {
     }
 }
 
-enum Endian {
-    LittleEndian,
-    BigEndian,
-    NativeEndian,
+pub enum ValueType<'a> {
+    Double(f64),
+    String(&'a str),
+    Binary(&'a [u8]),
 }
 
 struct Reader<'a> {
