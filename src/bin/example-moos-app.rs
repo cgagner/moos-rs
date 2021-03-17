@@ -2,11 +2,14 @@ extern crate moos;
 
 use std::{str, str::FromStr};
 
-use crate::moos::message::Message;
+use crate::moos::message::{Message, ValueType};
 
 fn main() {
     let mut m: Message = Message::from_string("DEPLOY", "true");
 
+    if let ValueType::String(s) = m.value() {
+        assert_eq!(s, "true");
+    }
     //m.key().push_str("Test");
 
     let sparkle_heart = vec![240, 159, 146, 150];

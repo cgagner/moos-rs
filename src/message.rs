@@ -45,7 +45,7 @@ impl<'m> Message<'m> {
         Message {
             id: 0,
             message_type: MessageType::Data,
-            data_type: DataType::Double,
+            data_type: DataType::String,
             double_value: 0.0,
             double_value2: 0.0,
             data: Data::String(value.into()),
@@ -106,6 +106,15 @@ impl<'m> Message<'m> {
 
     /// Data Value in the message. This is either a double,
     /// &str, or a &[[u8]].
+    ///
+    /// # Example moos::message::Message
+    /// ```
+    /// use moos::message::{Message, ValueType};
+    /// let mut m: Message = Message::from_string("DEPLOY", "true");
+    /// if let ValueType::String(s) = m.value() {
+    ///    assert_eq!(s, "true");
+    /// }
+    /// ```
     pub fn value(&self) -> ValueType {
         match self.data_type {
             DataType::Double => ValueType::Double(self.double_value),
@@ -490,6 +499,7 @@ mod tests {
     use crate::errors::*;
     use crate::message::Reader;
     use crate::message::Writer;
+    use crate::message::{Message, ValueType};
 
     #[test]
     fn test_data_type() {
@@ -671,5 +681,25 @@ mod tests {
             buffer,
             vec![8, 0, 0, 0, 97, 115, 100, 102, 240, 159, 146, 150]
         );
+    }
+
+    #[test]
+    fn test_message() {
+        let mut m: Message = Message::from_string("DEPLOY", "true");
+        assert_eq!(m.key(), "DEPLOY");
+
+        println!("Key: {}", m.key());
+
+        match m.value() {
+            ValueType::Binary(b) => println!("Binary: {:?}", b),
+            ValueType::String(s) => println!("String: {:?}", s),
+            ValueType::Double(d) => println!("Double: {}", d),
+        };
+
+        if let ValueType::String(s) = m.value() {
+            assert_eq!(s, "true");
+        } else {
+            assert!(false);
+        }
     }
 }
