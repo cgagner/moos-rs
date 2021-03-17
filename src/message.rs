@@ -3,7 +3,6 @@
 
 use crate::errors::{InsufficientSpaceError, Result};
 use core::convert::TryInto;
-use core::marker::PhantomData;
 use core::mem;
 use std::{collections::btree_map::Values, io::Error, str::from_utf8};
 
@@ -19,6 +18,8 @@ pub struct Message<'m> {
     pub(crate) message_type: MessageType,
     pub(crate) data_type: DataType,
     pub(crate) double_value: f64,
+    /// Auxiliary Double Value - Only used by `NOTIFY` and `TIMING` messages.
+    /// Should not be exposed though API.
     pub(crate) double_value2: f64,
     pub(crate) data: Data,
     pub(crate) string_value: &'m str,
@@ -31,23 +32,34 @@ pub struct Message<'m> {
 
 type MessageList<'m> = Vec<Message<'m>>;
 
-/*
- * length (i32)
- * id (i32)
- * message_type (i8)
- * data_type (i8)
- * source (i32) (std::string)
- * source_aux (i32) (str::string)
- * originating_community (i32) (std::string)
- * key (i32) (std::string)
- * time (f64)
- * double_value (f64)
- * double_value2 (f64)
- * string_value - (i32) (std::string)
- *
- */
 impl<'m> Message<'m> {
-    pub fn new<S>(message_type: MessageType, key: S) -> Self
+    /// Create a message that has a string value.
+    /// * `key`: Key of the message
+    /// * `value`: Value to put in the message
+    ///
+    /// ***TODO:*** Need to add a method for setting the time
+    pub fn from_string<S>(key: S, value: S) -> Self
+    where
+        S: Into<String>,
+    {
+        Message {
+            id: 0,
+            message_type: MessageType::Data,
+            data_type: DataType::Double,
+            double_value: 0.0,
+            double_value2: 0.0,
+            data: Data::String(value.into()),
+            string_value: "",
+            time: 0.0,
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    /// Create a new message
+    pub(crate) fn new<S>(message_type: MessageType, key: S) -> Self
     where
         S: Into<String>,
     {
@@ -67,42 +79,49 @@ impl<'m> Message<'m> {
         }
     }
 
+    /// Type of the data
     pub fn data_type(&self) -> DataType {
         self.data_type
     }
 
+    /// Key of the message.
     pub fn key(&self) -> &str {
         self.key.as_str()
     }
 
+    /// Time of the message
     pub fn time(&self) -> f64 {
         self.time
     }
 
+    /// Source of the message
     pub fn source(&self) -> &str {
         self.source.as_str()
     }
 
+    /// Extra source information
     pub fn source_aux(&self) -> &str {
         self.source_aux.as_str()
     }
 
+    /// Data Value in the message. This is either a double,
+    /// &str, or a &[[u8]].
     pub fn value(&self) -> ValueType {
-        // match self.data_type {
-        //     DataType::Double => ValueType::Double(self.double_value),
-        //     DataType::String => ValueType::String(self.string_value),
-        //     DataType::Binary => ValueType::Binary(self.data.as_slice()),
-        // }
-
-        match &self.data {
-            Data::Binary(b) => ValueType::Binary(b.as_slice()),
-            Data::String(s) => ValueType::String(s.as_str()),
+        match self.data_type {
+            DataType::Double => ValueType::Double(self.double_value),
+            _ => match &self.data {
+                Data::Binary(b) => ValueType::Binary(b.as_slice()),
+                Data::String(s) => ValueType::String(s.as_str()),
+            },
         }
     }
 
-    /// Decode a Message from a [u8] slice
+    /// Decode a [Message] from a [[u8]] slice
     ///
-    ///
+    /// Returns [Result] with a tupple of a [Message] and a [usize] if successful.
+    /// If there was a problem decoding a message, an error will be returned.
+    /// In most cases, this is because there is insufficient space or because
+    /// a string is not a valid UTF8 string.
     pub fn decode_slice(buffer: &[u8]) -> errors::Result<(Message, usize)> {
         let mut reader = Reader::new(buffer);
 
@@ -127,7 +146,7 @@ impl<'m> Message<'m> {
             _ => Data::Binary(reader.read_vector()?),
         };
 
-        let mut msg = Message {
+        let msg = Message {
             id,
             message_type,
             data_type,
@@ -142,10 +161,15 @@ impl<'m> Message<'m> {
             originating_community,
         };
 
-        //Err(errors::InsufficientSpaceError)
         Ok((msg, reader.bytes_read))
     }
 
+    /// Encode a [Message] into a [[u8]] slice.
+    ///
+    /// Returns a [Result] with the [usize] number of bytes written into the
+    /// slice if successful. Otherwise, returns a error. In most cases, this
+    /// is because there is insufficient space or because a string is not
+    /// a valid UTF8 string.
     pub fn encode_slice(&self, buffer: &mut [u8]) -> errors::Result<usize> {
         let len = self.get_size();
         // Check that the buffer has enough size to store the message
@@ -165,8 +189,10 @@ impl<'m> Message<'m> {
         writer.write_f64(self.time)?;
         writer.write_f64(self.double_value)?;
         writer.write_f64(self.double_value2)?;
-        // TODO: This should check the type and write a vector if it is binary
-        writer.write_string(&self.string_value)?;
+        match &self.data {
+            Data::Binary(b) => writer.write_vector(&b)?,
+            Data::String(s) => writer.write_string(&s)?,
+        };
 
         Ok(writer.bytes_written)
     }
@@ -174,8 +200,9 @@ impl<'m> Message<'m> {
     /// Returns the size of the message when serialized
     pub fn get_size(&self) -> i32 {
         (
-            // TODO: Need to add the length here?
-            mem::size_of_val(&self.id)
+            //
+            mem::size_of::<i32>() // Length
+             + mem::size_of_val(&self.id) // ID
              + mem::size_of::<i8>() // message type 
              + mem::size_of::<i8>() // data type 
              + mem::size_of::<i32>() + self.source.len()
@@ -192,7 +219,7 @@ impl<'m> Message<'m> {
 
 /// Type of the message.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-pub enum MessageType {
+pub(crate) enum MessageType {
     Null,
     Anonymous,
     Command,

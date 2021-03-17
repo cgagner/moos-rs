@@ -1,15 +1,11 @@
 extern crate moos;
 
-use std::str;
+use std::{str, str::FromStr};
 
 use crate::moos::message::Message;
 
 fn main() {
-    use moos::message::MessageType;
-
-    let key = String::from("DEPLOY");
-
-    let mut m: Message = Message::new(MessageType::Data, key);
+    let mut m: Message = Message::from_string("DEPLOY", "true");
 
     //m.key().push_str("Test");
 
