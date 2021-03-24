@@ -44,7 +44,16 @@ Client:
 8. Notify: MoosMessage(MOOS_NOTIFY, vName, <String|Double|Binary>, time)
 9. ServerRequest: MoosMessage(MOOS_SERVER_REQUEST, what, "")
 
-
+### Packet
+1. Header:
+   * number_of_bytes (int)
+   * number_of_messages (int)
+   * compression_enabled (uint8_t)
+2. List of Messages
+3. Decoding:
+   * Take a boolean to enable Null messages
+   * If there is a null message and it is the first message in the list,
+     get the double_value and return it as the packet time.
 
 ## Iterate Modes
 

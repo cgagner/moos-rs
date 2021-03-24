@@ -8,6 +8,8 @@ use std::{collections::btree_map::Values, io::Error, str::from_utf8};
 
 use super::errors;
 
+pub const PROTOCOL_CONNECT_MESSAGE: &str = "ELKS CAN'T DANCE 2/8/10\0\0\0\0\0\0\0\0\0";
+
 pub(crate) enum Data {
     String(String),
     Binary(Vec<u8>),
@@ -52,6 +54,25 @@ impl<'m> Message<'m> {
             string_value: "",
             time: 0.0,
             key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    /// TOOD: Remove this method. This is just a test to allow
+    /// a temporary client to connect to the MOOSDB
+    pub fn connect() -> Self {
+        Message {
+            id: -1,                          //
+            message_type: MessageType::Data, //
+            data_type: DataType::String,
+            double_value: -1.0,
+            double_value2: -1.0,
+            data: Data::String("umm-1".into()),
+            string_value: "",
+            time: 1616540538.542982, // Added for testing
+            key: "asynchronous".into(),
             source: String::new(),
             source_aux: String::new(),
             originating_community: String::new(),
@@ -221,9 +242,23 @@ impl<'m> Message<'m> {
              + mem::size_of_val(&self.time)
              + mem::size_of_val(&self.double_value)
              + mem::size_of_val(&self.double_value2)
-             + 1 + self.string_value.len()
+             + mem::size_of::<i32>() + match &self.data {
+                Data::Binary(b) => b.len(),
+                Data::String(s) => s.len(),
+            }
         ) as i32
     }
+}
+
+pub fn encode_slice(msg: Message, buffer: &mut [u8]) -> errors::Result<usize> {
+    const PACKET_HEADER_SIZE: usize = core::mem::size_of::<i32>() * 2 + core::mem::size_of::<i8>();
+    let mut writer = Writer::new(buffer);
+    writer.write_i32(msg.get_size() + PACKET_HEADER_SIZE as i32)?; // number of bytes
+    writer.write_i32(1)?; // Number of messages
+    writer.write_i8(0)?; // Compression enabled
+    let len = writer.bytes_written;
+    let len = len + msg.encode_slice(&mut buffer[PACKET_HEADER_SIZE..])?;
+    Ok(len)
 }
 
 /// Type of the message.
@@ -702,4 +737,112 @@ mod tests {
             assert!(false);
         }
     }
+
+    // Timestamp: 1616542133 +- 10 mintues
+
+    // From client to MOOSDB
+    // "ELKS CAN'T DANCE 2/8/10".
+    // 45 4c 4b 53 20 43 41 4e 27 54 20 44 41 4e 43 45 20 32 2f 38 2f 31 30 00 00 00 00 00 00 00 00 00
+
+    // From client to MOOSDB
+    // Initial connect message - 80 bytes
+    // 50 00 00 00 01 00 00 00 00 47 00 00 00 ff ff ff
+    // ff 69 53 00 00 00 00 00 00 00 00 00 00 00 00 0c
+    // 00 00 00 61 73 79 6e 63 68 72 6f 6e 6f 75 73 38
+    // c0 a2 de 9c 16 d8 41 00 00 00 00 00 00 f0 bf 00
+    // 00 00 00 00 00 f0 bf 05 00 00 00 75 6d 6d 2d 31
+
+    // 50 00 00 00  - Packet header size: 0x50
+    // 01 00 00 00  - Number of messages: 1
+    // 00           - Compression: 0
+    // 47 00 00 00  - Message size: 0x47
+    // ff ff ff ff  - Id: -1
+    // 69           - Message Type: Data
+    // 53           - Data Type: String
+    // 00 00 00 00  - source
+    // 00 00 00 00  - source_aux
+    // 00 00 00 00  - community
+    // 0c 00 00 00  - Key size - 12: asynchronous
+    // 61 73 79 6e 63 68 72 6f 6e 6f 75 73
+    // 38 c0 a2 de 9c 16 d8 41 - Time: 1616540538.542982
+    // 00 00 00 00 00 00 f0 bf - Double value: -1
+    // 00 00 00 00 00 00 f0 bf - Double value2: -1
+    // 05 00 00 00 - String value size - 5
+    // 75 6d 6d 2d 31 - umm-1
+
+    // From MOOSDB to client
+    // Welcome Message - 113 bytes
+    // 71 00 00 00 01 00 00 00 00 68 00 00 00 ff ff ff
+    // ff 57 44 00 00 00 00 24 00 00 00 68 6f 73 74 6e
+    // 61 6d 65 3d 43 68 72 69 73 74 6f 70 68 65 72 73
+    // 4d 42 50 2e 76 65 72 69 7a 6f 6e 2e 6e 65 74 02
+    // 00 00 00 23 31 00 00 00 00 4a 28 a9 de 9c 16 d8
+    // 41 00 00 00 00 38 a0 b9 3f 00 00 00 00 00 00 f0
+    // bf 0c 00 00 00 61 73 79 6e 63 68 72 6f 6e 6f 75
+    // 73
+
+    // From client to MOOSDB
+    // Timing message - 76 bytes
+    // 4c 00 00 00 01 00 00 00 00 43 00 00 00 ff ff ff
+    // ff 54 44 00 00 00 00 00 00 00 00 00 00 00 00 0d
+    // 00 00 00 5f 61 73 79 6e 63 5f 74 69 6d 69 6e 67
+    // 26 c7 be de 9c 16 d8 41 00 00 00 00 00 00 00 00
+    // 00 00 00 00 00 00 f0 bf 00 00 00 00
+
+    // From MOOSDB to client
+    // Timing response - 76 bytes
+    // 4c 00 00 00 01 00 00 00 00 43 00 00 00 ff ff ff
+    // ff 54 44 00 00 00 00 00 00 00 00 00 00 00 00 0d
+    // 00 00 00 5f 61 73 79 6e 63 5f 74 69 6d 69 6e 67
+    // 26 c7 be de 9c 16 d8 41 4f cb be de 9c 16 d8 41
+    // 00 00 00 00 00 00 00 00 00 00 00 00
+
+    // From client to MOOSDB
+    // Data message? - 205 bytes
+    // cd 00 00 00 01 00 00 00 00 c4 00 00 00 00 00 00
+    // 00 4e 53 05 00 00 00 75 6d 6d 2d 31 00 00 00 00
+    // 00 00 00 00 0c 00 00 00 55 4d 4d 2d 31 5f 53 54
+    // 41 54 55 53 33 53 cd de 9c 16 d8 41 00 00 00 00
+    // 00 00 f0 bf 00 00 00 00 00 00 f0 bf 7d 00 00 00
+    // 41 70 70 45 72 72 6f 72 46 6c 61 67 3d 66 61 6c
+    // 73 65 2c 55 70 74 69 6d 65 3d 30 2e 36 36 38 36
+    // 2c 63 70 75 6c 6f 61 64 3d 30 2e 36 32 36 35 2c
+    // 6d 65 6d 6f 72 79 5f 6b 62 3d 31 31 39 32 2c 6d
+    // 65 6d 6f 72 79 5f 6d 61 78 5f 6b 62 3d 31 31 39
+    // 32 2c 4d 4f 4f 53 4e 61 6d 65 3d 75 6d 6d 2d 31
+    // 2c 50 75 62 6c 69 73 68 69 6e 67 3d 22 22 2c 53
+    // 75 62 73 63 72 69 62 69 6e 67 3d 22 22
+
+    // From client to MOOSDB
+    // Timing - 76 bytes
+    // 4c 00 00 00 01 00 00 00 00 43 00 00 00 ff ff ff
+    // ff 54 44 00 00 00 00 00 00 00 00 00 00 00 00 0d
+    // 00 00 00 5f 61 73 79 6e 63 5f 74 69 6d 69 6e 67
+    // 16 f8 0d df 9c 16 d8 41 00 00 00 00 00 00 00 00
+    // 00 00 00 00 00 00 f0 bf 00 00 00 00
+
+    // From MOOSDB to Client
+    // Timing response - 76 bytes
+    // 4c 00 00 00 01 00 00 00 00 43 00 00 00 ff ff ff
+    // ff 54 44 00 00 00 00 00 00 00 00 00 00 00 00 0d
+    // 00 00 00 5f 61 73 79 6e 63 5f 74 69 6d 69 6e 67
+    // 16 f8 0d df 9c 16 d8 41 ec fb 0d df 9c 16 d8 41
+    // 00 00 00 00 00 00 00 00 00 00 00 00
+
+    // From client to MOOSDB
+    // Data? -
+    // 0000   db 00 00 00 01 00 00 00 00 d2 00 00 00 01 00 00
+    // 00 4e 53 05 00 00 00 75 6d 6d 2d 31 00 00 00 00
+    // 00 00 00 00 0c 00 00 00 55 4d 4d 2d 31 5f 53 54
+    // 41 54 55 53 c6 df 4d df 9c 16 d8 41 00 00 00 00
+    // 00 00 f0 bf 00 00 00 00 00 00 f0 bf 8b 00 00 00
+    // 41 70 70 45 72 72 6f 72 46 6c 61 67 3d 66 61 6c
+    // 73 65 2c 55 70 74 69 6d 65 3d 32 2e 36 37 37 31
+    // 38 2c 63 70 75 6c 6f 61 64 3d 30 2e 39 35 36 36
+    // 2c 6d 65 6d 6f 72 79 5f 6b 62 3d 31 32 33 32 2c
+    // 6d 65 6d 6f 72 79 5f 6d 61 78 5f 6b 62 3d 31 32
+    // 33 32 2c 4d 4f 4f 53 4e 61 6d 65 3d 75 6d 6d 2d
+    // 31 2c 50 75 62 6c 69 73 68 69 6e 67 3d 22 55 4d
+    // 4d 2d 31 5f 53 54 41 54 55 53 2c 22 2c 53 75 62
+    // 73 63 72 69 62 69 6e 67 3d 22 22
 }
