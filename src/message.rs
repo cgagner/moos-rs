@@ -10,7 +10,7 @@ use super::errors;
 
 pub const PROTOCOL_CONNECT_MESSAGE: &str = "ELKS CAN'T DANCE 2/8/10\0\0\0\0\0\0\0\0\0";
 
-pub(crate) enum Data {
+pub enum Data {
     String(String),
     Binary(Vec<u8>),
 }
@@ -32,7 +32,7 @@ pub struct Message<'m> {
     pub(crate) originating_community: String,
 }
 
-type MessageList<'m> = Vec<Message<'m>>;
+pub type MessageList<'m> = Vec<Message<'m>>;
 
 impl<'m> Message<'m> {
     /// Create a message that has a string value.
@@ -100,6 +100,10 @@ impl<'m> Message<'m> {
         }
     }
 
+    pub fn data(&self) -> &Data {
+        &self.data
+    }
+
     /// Type of the data
     pub fn data_type(&self) -> DataType {
         self.data_type
@@ -123,6 +127,11 @@ impl<'m> Message<'m> {
     /// Extra source information
     pub fn source_aux(&self) -> &str {
         self.source_aux.as_str()
+    }
+
+    /// Originiating community name
+    pub fn originating_community(&self) -> &str {
+        self.originating_community.as_str()
     }
 
     /// Data Value in the message. This is either a double,
@@ -259,6 +268,28 @@ pub fn encode_slice(msg: Message, buffer: &mut [u8]) -> errors::Result<usize> {
     let len = writer.bytes_written;
     let len = len + msg.encode_slice(&mut buffer[PACKET_HEADER_SIZE..])?;
     Ok(len)
+}
+
+pub fn decode_slice(buffer: &[u8]) -> errors::Result<(MessageList, usize)> {
+    let mut reader = Reader::new(buffer);
+    let total_bytes = reader.read_i32()?;
+    if buffer.len() < total_bytes as usize {
+        return Err(errors::InsufficientSpaceError);
+    }
+
+    let expected_messages = reader.read_i32()?;
+    reader.read_i8()?; // compression enabled - not used
+
+    let mut bytes_read = reader.bytes_read;
+    drop(reader);
+    let mut msg_list = MessageList::new();
+    for i in 0..expected_messages {
+        let (msg, message_size) = Message::decode_slice(&buffer[bytes_read..])?;
+        bytes_read += message_size;
+        msg_list.push(msg);
+    }
+
+    Ok((msg_list, bytes_read))
 }
 
 /// Type of the message.

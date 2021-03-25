@@ -2,7 +2,7 @@ extern crate moos;
 
 use std::{str, str::FromStr};
 
-use crate::moos::message::{Message, ValueType};
+use crate::moos::message::{Data, Message, MessageList, ValueType};
 use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -24,7 +24,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     // TODO: Serialize a packet
 
-    let msg = moos::message::Message::connect();
+    let msg = Message::connect();
 
     let len = moos::message::encode_slice(msg, &mut write_buf).unwrap();
 
@@ -40,6 +40,32 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         println!("Read: {}", size);
     } else {
         println!("Error: {:?} ", result);
+    }
+
+    let (msg_list, bytes_read) = if let Ok(bytes_read) = result {
+        moos::message::decode_slice(&read_buf).unwrap()
+    } else {
+        // TODO: Figure out what to return here.
+        return Ok(());
+    };
+
+    println!("Bytes read: {}", bytes_read);
+    println!("Number of messages: {}", msg_list.len());
+    for msg in msg_list {
+        println!("MessageType: {:?} ", msg.data_type());
+        println!("Source: {}", msg.source());
+        println!("SourceAux: {}", msg.source_aux());
+        println!("Community: {}", msg.originating_community());
+        match msg.value() {
+            ValueType::Binary(b) => println!("Binary: {:x?}", b),
+            ValueType::String(s) => println!("String: {}", s),
+            ValueType::Double(d) => println!("Double: {}", d),
+        };
+
+        match msg.data() {
+            Data::String(s) => println!("String: {}", s),
+            Data::Binary(b) => println!("Binary: {:x?}", b),
+        }
     }
 
     Ok(())
