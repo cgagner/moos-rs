@@ -2,6 +2,7 @@
 //
 
 use crate::errors::{InsufficientSpaceError, Result};
+use crate::{time_local, time_unwarped, time_warped};
 use core::convert::TryInto;
 use core::mem;
 use std::{collections::btree_map::Values, io::Error, str::from_utf8};
@@ -62,16 +63,16 @@ impl<'m> Message<'m> {
 
     /// TOOD: Remove this method. This is just a test to allow
     /// a temporary client to connect to the MOOSDB
-    pub fn connect() -> Self {
+    pub fn connect(client_name: &str) -> Self {
         Message {
             id: -1,                          //
             message_type: MessageType::Data, //
             data_type: DataType::String,
             double_value: -1.0,
             double_value2: -1.0,
-            data: Data::String("umm-1".into()),
+            data: Data::String(client_name.into()),
             string_value: "",
-            time: 1616540538.542982, // Added for testing
+            time: time_warped(),
             key: "asynchronous".into(),
             source: String::new(),
             source_aux: String::new(),
