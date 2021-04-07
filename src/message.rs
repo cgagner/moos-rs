@@ -10,6 +10,7 @@ use std::{collections::btree_map::Values, io::Error, str::from_utf8};
 use super::errors;
 
 pub const PROTOCOL_CONNECT_MESSAGE: &str = "ELKS CAN'T DANCE 2/8/10\0\0\0\0\0\0\0\0\0";
+pub const ASYNCHRONOUS: &str = "asynchronous";
 
 pub enum Data {
     String(String),
@@ -73,7 +74,7 @@ impl<'m> Message<'m> {
             data: Data::String(client_name.into()),
             string_value: "",
             time: time_warped(),
-            key: "asynchronous".into(),
+            key: ASYNCHRONOUS.into(),
             source: String::new(),
             source_aux: String::new(),
             originating_community: String::new(),
@@ -103,6 +104,13 @@ impl<'m> Message<'m> {
 
     pub fn data(&self) -> &Data {
         &self.data
+    }
+
+    /// Double value - Normally, you should use the data. However, some
+    /// of the internal messages use both the double value and the string
+    /// values.
+    pub(crate) fn double_value(&self) -> f64 {
+        self.double_value
     }
 
     /// Type of the data
