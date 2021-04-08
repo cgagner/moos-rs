@@ -4,8 +4,11 @@ use crate::{time_local, time_unwarped, time_warped};
 
 use std::net::{Shutdown, SocketAddr};
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    time::sleep,
+};
 
 pub struct AsyncClient {
     stream: Option<TcpStream>,
@@ -74,10 +77,29 @@ impl AsyncClient {
         }
 
         let addr = format!("{}:{}", self.database_host, self.database_port);
+
+        let mut attempt: i32 = 0;
+
+        while let Err(_) = TcpStream::connect(addr.clone()).await {
+            println!(
+                "AsyncClient failed to connect to {} after {} attempts.",
+                addr, attempt
+            );
+            attempt += 1;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        }
+
         let mut stream = TcpStream::connect(addr).await.unwrap();
+        self.stream = Some(stream);
+
+        if let Err(e) = self.handshake().await {
+            return Err(e);
+        }
 
         Ok(())
     }
+
+    /// Disconnect from the MOOSDB.
     pub async fn disconnect(&mut self) -> errors::Result<()> {
         if let Some(stream) = &mut self.stream {
             stream
@@ -89,13 +111,26 @@ impl AsyncClient {
 
         Ok(())
     }
-    pub async fn handshake(&mut self) -> errors::Result<()> {
-        if self.is_time_correction_enabled() {
+
+    /// Handle the handshake with the MOOSDB to initiate the communication.
+    /// The handshake should happen after the socket is conencted to the MOOSDB.
+    /// Attempting to handshake without being connected will result in an error
+    /// being returned.
+    async fn handshake(&mut self) -> errors::Result<()> {
+        let time_correction_enabled = self.is_time_correction_enabled();
+        let client_name = String::from(self.get_name());
+
+        if time_correction_enabled {
             crate::set_time_skew(0.0);
         }
 
-        // TODO: Need to move these to a constructor
-        let mut stream = TcpStream::connect("127.0.0.1:9000").await.unwrap();
+        let stream = if let Some(stream) = &mut self.stream {
+            stream
+        } else {
+            return Err(errors::Error::General(
+                "AsyncClient::handshake faile to get the TcpStream",
+            ));
+        };
 
         let result = stream
             .write(crate::message::PROTOCOL_CONNECT_MESSAGE.as_bytes())
@@ -109,7 +144,7 @@ impl AsyncClient {
             return Err(errors::Error::General("Failed to write welcome message"));
         }
 
-        let msg = Message::connect(self.get_name());
+        let msg = Message::connect(client_name.as_str());
 
         let len = crate::message::encode_slice(msg, &mut self.write_buffer)?;
 
@@ -125,7 +160,7 @@ impl AsyncClient {
             println!("Error: {:?} ", result);
         }
 
-        let (msg_list, bytes_read) = if let Ok(bytes_read) = result {
+        let (msg_list, _) = if let Ok(_) = result {
             crate::message::decode_slice(&self.read_buffer)?
         } else {
             return Err(errors::Error::General("Failed to decode welcome message."));
@@ -147,31 +182,10 @@ impl AsyncClient {
             // store the hostname
 
             let skew = msg.double_value();
-            if self.is_time_correction_enabled() {
+            if time_correction_enabled {
                 crate::set_time_skew(skew);
             }
         }
-
-        // println!("Bytes read: {}", bytes_read);
-        // println!("Number of messages: {}", msg_list.len());
-        // for msg in msg_list {
-        //     println!("MessageType: {:?} ", msg.data_type());
-        //     println!("Source: {}", msg.source());
-        //     println!("SourceAux: {}", msg.source_aux());
-        //     println!("Community: {}", msg.originating_community());
-        //     match msg.value() {
-        //         ValueType::Binary(b) => println!("Binary: {:x?}", b),
-        //         ValueType::String(s) => println!("String: {}", s),
-        //         ValueType::Double(d) => println!("Double: {}", d),
-        //     };
-
-        //     match msg.data() {
-        //         Data::String(s) => println!("String: {}", s),
-        //         Data::Binary(b) => println!("Binary: {:x?}", b),
-        //     }
-        // }
-
-        self.stream = Some(stream);
 
         Ok(())
     }

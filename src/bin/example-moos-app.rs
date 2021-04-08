@@ -14,17 +14,22 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     // Note that this is the Tokio TcpStream, which is fully async.
 
     let mut client = AsyncClient::new("umm-1").await;
-    if let Ok(()) = client.handshake().await {
+    if let Ok(()) = client.connect().await {
         println!("Connected! Community: {}", client.get_community());
     }
 
     let task1 = tokio::spawn(async move {
         loop {
             println!("Task running1");
-            if let Ok(()) = client.handshake().await {
-                println!("Connected! Community: {}", client.get_community());
+            let result = client.connect().await;
+            match result {
+                Ok(()) => println!("Connected! Community: {}", client.get_community()),
+                Err(e) => eprintln!("Failed to connect! {:?}", e),
             }
-            client.disconnect().await;
+            if let Err(e) = client.disconnect().await {
+                eprintln!("Failed to disconnect! {:?}", e);
+                return;
+            }
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
     });
