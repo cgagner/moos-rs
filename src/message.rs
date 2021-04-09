@@ -81,6 +81,23 @@ impl<'m> Message<'m> {
         }
     }
 
+    pub fn register(client_name: &str, key: &str, interval: f64) -> Self {
+        Message {
+            id: -1,                              //
+            message_type: MessageType::Register, //
+            data_type: DataType::Double,
+            double_value: interval,
+            double_value2: -1.0,
+            data: Data::String(client_name.into()),
+            string_value: "",
+            time: time_warped(),
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
     /// Create a new message
     pub(crate) fn new<S>(message_type: MessageType, key: S) -> Self
     where
@@ -116,6 +133,11 @@ impl<'m> Message<'m> {
     /// Type of the data
     pub fn data_type(&self) -> DataType {
         self.data_type
+    }
+
+    /// Type of the message
+    pub(crate) fn message_type(&self) -> MessageType {
+        self.message_type
     }
 
     /// Key of the message.
@@ -268,7 +290,7 @@ impl<'m> Message<'m> {
     }
 }
 
-pub fn encode_slice(msg: Message, buffer: &mut [u8]) -> errors::Result<usize> {
+pub fn encode_slice(msg: &Message, buffer: &mut [u8]) -> errors::Result<usize> {
     const PACKET_HEADER_SIZE: usize = core::mem::size_of::<i32>() * 2 + core::mem::size_of::<i8>();
     let mut writer = Writer::new(buffer);
     writer.write_i32(msg.get_size() + PACKET_HEADER_SIZE as i32)?; // number of bytes

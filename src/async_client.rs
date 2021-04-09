@@ -1,5 +1,8 @@
-use crate::message::{Data, Message, ValueType};
 use crate::{errors, message::PROTOCOL_CONNECT_MESSAGE};
+use crate::{
+    errors::Result,
+    message::{Data, Message, MessageType, ValueType},
+};
 use crate::{time_local, time_unwarped, time_warped};
 
 use std::net::{Shutdown, SocketAddr};
@@ -18,6 +21,8 @@ pub struct AsyncClient {
     community: String,
     database_host: String,
     database_port: u16,
+    last_connected_time: f64,
+    current_id: i32,
 }
 
 pub struct InnerAsyncClient {}
@@ -35,6 +40,8 @@ impl AsyncClient {
             community: "".into(),
             database_host: "localhost".into(),
             database_port: 9000,
+            last_connected_time: 0.0,
+            current_id: 0,
         }
     }
     pub fn is_connected(&self) -> bool {
@@ -89,12 +96,15 @@ impl AsyncClient {
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         }
 
-        let mut stream = TcpStream::connect(addr).await.unwrap();
-        self.stream = Some(stream);
+        self.stream = Some(TcpStream::connect(addr).await.unwrap());
 
         if let Err(e) = self.handshake().await {
             return Err(e);
         }
+
+        self.last_connected_time = time_warped();
+
+        // TODO: Need to call the on_connect callback
 
         Ok(())
     }
@@ -109,7 +119,62 @@ impl AsyncClient {
         }
         self.stream = None;
 
+        // TODO: Need to call the on_disconnect callback
         Ok(())
+    }
+
+    pub async fn subscribe(&mut self, variable: &str, interval: f64) -> errors::Result<()> {
+        if !self.is_connected() {
+            return Err(errors::Error::General(
+                "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
+            ));
+        }
+
+        let mut message = Message::register(self.get_name(), variable, interval);
+
+        // TODO: Need to create a helper method or a builder to handle setting
+        // the other fields of the message from the client. This includes
+        // the client name, timestamp, incrementing the id.
+
+        return self.send_message(&mut message).await;
+    }
+
+    /// Send a message to the MOOSDB.
+    ///
+    /// # Arguments
+    /// * `message`: Message to be sent
+    async fn send_message<'m>(&mut self, message: &mut Message<'m>) -> errors::Result<()> {
+        if !self.is_connected() {
+            return Err(errors::Error::General(
+                "AsyncClient::send_message: failed to send because the client is not connected.",
+            ));
+        }
+        message.source = String::from(self.get_name());
+
+        message.id = match message.message_type() {
+            MessageType::ServerRequest => -2,
+            _ => self.current_id,
+        };
+
+        self.current_id += 1;
+
+        // TODO: Look at switching this to use a channel
+
+        let len = crate::message::encode_slice(&message, &mut self.write_buffer)?;
+
+        if let Some(stream) = &mut self.stream {
+            let result = stream.write(&mut self.write_buffer[0..len]).await;
+            if let Err(_) = result {
+                return Err(errors::Error::General(
+                    "AsyncClient::send_message: failed to send message",
+                ));
+            }
+            return Ok(());
+        } else {
+            return Err(errors::Error::General(
+                "AsyncClient::send_message: failed to send because the client is not connected.",
+            ));
+        }
     }
 
     /// Handle the handshake with the MOOSDB to initiate the communication.
@@ -146,7 +211,7 @@ impl AsyncClient {
 
         let msg = Message::connect(client_name.as_str());
 
-        let len = crate::message::encode_slice(msg, &mut self.write_buffer)?;
+        let len = crate::message::encode_slice(&msg, &mut self.write_buffer)?;
 
         let result = stream.write(&mut self.write_buffer[0..len]).await;
         println!("wrote to stream; success={:?}", result);
