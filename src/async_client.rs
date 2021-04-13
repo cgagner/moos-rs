@@ -7,9 +7,9 @@ use crate::{time_local, time_unwarped, time_warped};
 
 use std::net::{Shutdown, SocketAddr};
 use std::sync::Arc;
-use tokio::net::TcpStream;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
     time::sleep,
 };
 
@@ -253,5 +253,36 @@ impl AsyncClient {
         }
 
         Ok(())
+    }
+
+    // TODO: Change this to be private
+    pub async fn read_loop(&mut self) -> errors::Result<()> {
+        loop {
+            let stream = if let Some(stream) = &mut self.stream {
+                stream
+            } else {
+                return Err(errors::Error::General(
+                    "AsyncClient::handshake faile to get the TcpStream",
+                ));
+            };
+            let (reader, _writer) = &mut stream.split();
+
+            let result = reader.read(&mut self.read_buffer).await;
+
+            let (msg_list, _) = if let Ok(bytes_read) = result {
+                if bytes_read > 0 {
+                    crate::message::decode_slice(&self.read_buffer)?
+                } else {
+                    continue;
+                }
+            } else {
+                return Err(errors::Error::General("Failed to decode message."));
+            };
+
+            println!("Received {} messages.", msg_list.len());
+            for message in msg_list {
+                println!("Received Message of type: {}", message);
+            }
+        }
     }
 }

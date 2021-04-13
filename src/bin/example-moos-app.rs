@@ -26,6 +26,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 Ok(()) => println!("Connected! Community: {}", client.get_community()),
                 Err(e) => eprintln!("Failed to connect! {:?}", e),
             }
+
+            client.subscribe("DB_CLIENTS", 0.0).await;
+            client.read_loop().await;
+
+            // TODO: Need to update the client to periodically sent a heartbeat message.
+
             if let Err(e) = client.disconnect().await {
                 eprintln!("Failed to disconnect! {:?}", e);
                 return;

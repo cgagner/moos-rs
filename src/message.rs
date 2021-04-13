@@ -5,7 +5,7 @@ use crate::errors::{InsufficientSpaceError, Result};
 use crate::{time_local, time_unwarped, time_warped};
 use core::convert::TryInto;
 use core::mem;
-use std::{collections::btree_map::Values, io::Error, str::from_utf8};
+use std::{collections::btree_map::Values, fmt, fmt::Display, io::Error, str::from_utf8};
 
 use super::errors;
 
@@ -287,6 +287,21 @@ impl<'m> Message<'m> {
                 Data::String(s) => s.len(),
             }
         ) as i32
+    }
+}
+
+impl<'m> Display for Message<'m> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(type: {:?}", self.message_type())?;
+        write!(f, ",data_type: {:?}", self.data_type())?;
+        write!(f, ",key: {}", self.key())?;
+        match self.value() {
+            ValueType::Double(d) => write!(f, ",value: {}", d)?,
+            ValueType::String(s) => write!(f, ",value: {}", s)?,
+            ValueType::Binary(b) => write!(f, ",value: {:?}", b)?,
+            _ => write!(f, ",value: null")?,
+        };
+        write!(f, ")")
     }
 }
 
