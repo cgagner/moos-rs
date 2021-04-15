@@ -5,6 +5,7 @@ use crate::{
 };
 use crate::{time_local, time_unwarped, time_warped};
 
+use log::{debug, error, info, trace, warn};
 use std::net::{Shutdown, SocketAddr};
 use std::sync::Arc;
 use tokio::{
@@ -24,6 +25,8 @@ pub struct AsyncClient {
     last_connected_time: f64,
     current_id: i32,
 }
+
+pub struct ClientContect {}
 
 pub struct InnerAsyncClient {}
 
@@ -88,9 +91,10 @@ impl AsyncClient {
         let mut attempt: i32 = 0;
 
         while let Err(_) = TcpStream::connect(addr.clone()).await {
-            println!(
+            trace!(
                 "AsyncClient failed to connect to {} after {} attempts.",
-                addr, attempt
+                addr,
+                attempt
             );
             attempt += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -214,15 +218,15 @@ impl AsyncClient {
         let len = crate::message::encode_slice(&msg, &mut self.write_buffer)?;
 
         let result = stream.write(&mut self.write_buffer[0..len]).await;
-        println!("wrote to stream; success={:?}", result);
-        println!("Wrote: {:x?}", &self.write_buffer[0..len]);
+        trace!("wrote to stream; success={:?}", result);
+        trace!("Wrote: {:x?}", &self.write_buffer[0..len]);
 
         let result = stream.read(&mut self.read_buffer).await;
 
         if let Ok(size) = result {
-            println!("Read: {}", size);
+            trace!("Read: {}", size);
         } else {
-            println!("Error: {:?} ", result);
+            trace!("Error: {:?} ", result);
         }
 
         let (msg_list, _) = if let Ok(_) = result {
@@ -257,7 +261,28 @@ impl AsyncClient {
 
     // TODO: Change this to be private
     pub async fn read_loop(&mut self) -> errors::Result<()> {
+        let mut timer =
+            tokio_timer::Interval::new_interval(tokio::time::Duration::from_millis(1000));
+        let mut t = tokio::time::interval(tokio::time::Duration::from_millis(1000));
+        t.tick().await;
+
+        tokio::spawn(async {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                info!("Task is sleeping");
+            }
+        });
+
+        let mut time = std::time::Instant::now();
         loop {
+            // TODO: Need to move the timing into a separate task
+            if time.elapsed() > std::time::Duration::from_millis(1000) {
+                warn!("Sending timing message");
+                time = std::time::Instant::now();
+                let mut timing = Message::timing(self.get_name());
+                self.send_message(&mut timing).await?;
+            }
+
             let stream = if let Some(stream) = &mut self.stream {
                 stream
             } else {
@@ -279,9 +304,10 @@ impl AsyncClient {
                 return Err(errors::Error::General("Failed to decode message."));
             };
 
-            println!("Received {} messages.", msg_list.len());
+            trace!("Received {} messages.", msg_list.len());
+
             for message in msg_list {
-                println!("Received Message of type: {}", message);
+                trace!("Received Message of type: {}", message);
             }
         }
     }

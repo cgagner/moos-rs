@@ -1,13 +1,12 @@
 // message.rs
 //
 
+use super::errors;
 use crate::errors::{InsufficientSpaceError, Result};
 use crate::{time_local, time_unwarped, time_warped};
 use core::convert::TryInto;
 use core::mem;
 use std::{collections::btree_map::Values, fmt, fmt::Display, io::Error, str::from_utf8};
-
-use super::errors;
 
 pub const PROTOCOL_CONNECT_MESSAGE: &str = "ELKS CAN'T DANCE 2/8/10\0\0\0\0\0\0\0\0\0";
 pub const ASYNCHRONOUS: &str = "asynchronous";
@@ -75,6 +74,24 @@ impl<'m> Message<'m> {
             string_value: "",
             time: time_warped(),
             key: ASYNCHRONOUS.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    // TODO: Switch this to pub(crate)
+    pub fn timing(client_name: &str) -> Self {
+        Message {
+            id: -1,                            //
+            message_type: MessageType::Timing, //
+            data_type: DataType::Double,
+            double_value: 0.0,
+            double_value2: -1.0,
+            data: Data::String(client_name.into()),
+            string_value: "",
+            time: time_warped(),
+            key: "_async_timing".into(),
             source: String::new(),
             source_aux: String::new(),
             originating_community: String::new(),
@@ -608,6 +625,8 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
+    use log::debug;
+
     use crate::errors::*;
     use crate::message::Reader;
     use crate::message::Writer;

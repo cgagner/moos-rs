@@ -3,12 +3,14 @@ extern crate moos;
 use std::{str, str::FromStr, thread::sleep};
 
 use crate::moos::async_client::AsyncClient;
+use simple_logger::SimpleLogger;
 use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{join, task};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
+    SimpleLogger::new().init().unwrap();
     // Open a TCP stream to the socket address.
     //
     // Note that this is the Tokio TcpStream, which is fully async.

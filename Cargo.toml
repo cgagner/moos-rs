@@ -8,3 +8,8 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+tokio-timer = "0.2.13"
+log = "0.4"
+
+# TODO: Move this dependency to the example
+simple_logger = "1.11.0"
