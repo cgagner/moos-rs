@@ -125,6 +125,57 @@ impl Message {
         }
     }
 
+    pub(crate) fn notify_double(key: &str, value: f64, time: f64) -> Self {
+        Message {
+            id: 0,                             //
+            message_type: MessageType::Notify, //
+            data_type: DataType::Double,
+            double_value: value,
+            double_value2: 0.0,
+            data: Data::Binary(Vec::new()),
+            time: time,
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    pub(crate) fn notify_data(key: &str, value: &Vec<u8>, time: f64) -> Self {
+        Message {
+            id: 0,                             //
+            message_type: MessageType::Notify, //
+            data_type: DataType::Binary,
+            double_value: 0.0,
+            double_value2: 0.0,
+            data: Data::Binary(value.clone()),
+            time: time,
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    pub(crate) fn notify_string<S>(key: &str, value: S, time: f64) -> Self
+    where
+        S: Into<String>,
+    {
+        Message {
+            id: 0,                             //
+            message_type: MessageType::Notify, //
+            data_type: DataType::String,
+            double_value: 0.0,
+            double_value2: 0.0,
+            data: Data::String(value.into()),
+            time: time,
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
     pub fn data(&self) -> &Data {
         &self.data
     }

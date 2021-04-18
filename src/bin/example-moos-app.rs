@@ -3,6 +3,7 @@ extern crate moos;
 use std::{str, str::FromStr, thread::sleep};
 
 use crate::moos::async_client::AsyncClient;
+use moos::async_client::Publish;
 use simple_logger::SimpleLogger;
 use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -29,7 +30,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 Err(e) => eprintln!("Failed to connect! {:?}", e),
             }
 
-            client.subscribe("DB_CLIENTS", 0.0).await;
+            client.subscribe("DB_CLIENTS", 0.0);
+            client.publish("TEST_12", "TRUE");
+
+            println!("Finished publishing RETURN");
 
             // TODO: Need to update the client to periodically sent a heartbeat message.
 

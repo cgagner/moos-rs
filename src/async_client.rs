@@ -1,4 +1,7 @@
-use crate::{errors, message::PROTOCOL_CONNECT_MESSAGE};
+use crate::{
+    errors,
+    message::{DataType, PROTOCOL_CONNECT_MESSAGE},
+};
 use crate::{
     errors::Result,
     message::{Data, Message, MessageType, ValueType},
@@ -26,6 +29,10 @@ pub struct AsyncClient {
     last_connected_time: f64,
     current_id: i32,
     outbox: Option<tokio::sync::mpsc::UnboundedSender<Message>>,
+}
+
+pub trait Publish<D> {
+    fn publish(&mut self, key: &str, value: D) -> errors::Result<()>;
 }
 
 impl AsyncClient {
@@ -89,7 +96,8 @@ impl AsyncClient {
 
         let mut attempt: i32 = 0;
 
-        while let Err(_) = TcpStream::connect(addr.clone()).await {
+        let mut result = TcpStream::connect(addr.clone()).await;
+        while let Err(_) = result {
             trace!(
                 "AsyncClient failed to connect to {} after {} attempts.",
                 addr,
@@ -97,9 +105,17 @@ impl AsyncClient {
             );
             attempt += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            result = TcpStream::connect(addr.clone()).await;
         }
 
-        let mut stream = TcpStream::connect(addr).await.unwrap();
+        let mut stream = match result {
+            Ok(stream) => stream,
+            Err(e) => {
+                return Err(errors::Error::General(
+                    "AsyncClient somehow got an invalid stream while connecting.",
+                ))
+            }
+        };
 
         if let Err(e) = self.handshake(&mut stream).await {
             return Err(e);
@@ -138,27 +154,27 @@ impl AsyncClient {
         Ok(())
     }
 
-    pub async fn subscribe(&mut self, variable: &str, interval: f64) -> errors::Result<()> {
+    pub fn subscribe(&mut self, key: &str, interval: f64) -> errors::Result<()> {
         if !self.is_connected() {
             return Err(errors::Error::General(
                 "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
             ));
         }
 
-        let mut message = Message::register(self.get_name(), variable, interval);
+        let mut message = Message::register(self.get_name(), key, interval);
 
         // TODO: Need to create a helper method or a builder to handle setting
         // the other fields of the message from the client. This includes
         // the client name, timestamp, incrementing the id.
 
-        return self.send_message(message).await;
+        return self.send_message(message);
     }
 
     /// Send a message to the MOOSDB.
     ///
     /// # Arguments
     /// * `message`: Message to be sent
-    async fn send_message<'m>(&mut self, mut message: Message) -> errors::Result<()> {
+    fn send_message(&mut self, mut message: Message) -> errors::Result<()> {
         if !self.is_connected() {
             return Err(errors::Error::General(
                 "AsyncClient::send_message: failed to send because the client is not connected.",
@@ -262,10 +278,11 @@ impl AsyncClient {
         mut reader: tokio::io::ReadHalf<tokio::net::TcpStream>,
         mut outbox: tokio::sync::mpsc::UnboundedSender<Message>,
     ) -> errors::Result<()> {
+        // TODO: Need to set the size from a configuration
         let mut read_buffer = vec![0; 200000];
         let mut time = std::time::Instant::now();
         loop {
-            info!("read_loop: ");
+            trace!("read_loop");
             // TODO: Need to move the timing into a separate task
             if time.elapsed() > std::time::Duration::from_millis(1000) {
                 warn!("Sending timing message");
@@ -301,6 +318,7 @@ impl AsyncClient {
         mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
         mut outbox: tokio::sync::mpsc::UnboundedReceiver<Message>,
     ) {
+        // TODO: Need to set the size from a configuration
         let mut write_buffer = vec![0; 200000];
         loop {
             if let Some(message) = outbox.recv().await {
@@ -319,5 +337,33 @@ impl AsyncClient {
                 }
             }
         }
+    }
+}
+
+impl Publish<f64> for AsyncClient {
+    fn publish(&mut self, key: &str, value: f64) -> errors::Result<()> {
+        let mut message = Message::notify_double(key, value, crate::time_warped());
+        return self.send_message(message);
+    }
+}
+
+impl Publish<&Vec<u8>> for AsyncClient {
+    fn publish(&mut self, key: &str, value: &Vec<u8>) -> errors::Result<()> {
+        let mut message = Message::notify_data(key, value, crate::time_warped());
+        return self.send_message(message);
+    }
+}
+
+impl Publish<String> for AsyncClient {
+    fn publish(&mut self, key: &str, value: String) -> errors::Result<()> {
+        let mut message = Message::notify_string(key, value, crate::time_warped());
+        return self.send_message(message);
+    }
+}
+
+impl Publish<&str> for AsyncClient {
+    fn publish(&mut self, key: &str, value: &str) -> errors::Result<()> {
+        let mut message = Message::notify_string(key, value, crate::time_warped());
+        return self.send_message(message);
     }
 }
