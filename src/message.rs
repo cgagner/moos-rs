@@ -16,7 +16,7 @@ pub enum Data {
     Binary(Vec<u8>),
 }
 
-pub struct Message<'m> {
+pub struct Message {
     pub(crate) id: i32,
     pub(crate) message_type: MessageType,
     pub(crate) data_type: DataType,
@@ -25,7 +25,6 @@ pub struct Message<'m> {
     /// Should not be exposed though API.
     pub(crate) double_value2: f64,
     pub(crate) data: Data,
-    pub(crate) string_value: &'m str,
     pub(crate) key: String,
     pub(crate) time: f64,
     pub(crate) source: String,
@@ -33,27 +32,24 @@ pub struct Message<'m> {
     pub(crate) originating_community: String,
 }
 
-pub type MessageList<'m> = Vec<Message<'m>>;
+pub type MessageList = Vec<Message>;
 
-impl<'m> Message<'m> {
+impl Message {
     /// Create a message that has a string value.
     /// * `key`: Key of the message
     /// * `value`: Value to put in the message
-    ///
-    /// ***TODO:*** Need to add a method for setting the time
     pub fn from_string<S>(key: S, value: S) -> Self
     where
         S: Into<String>,
     {
-        Message {
+        Self {
             id: 0,
             message_type: MessageType::Data,
             data_type: DataType::String,
             double_value: 0.0,
             double_value2: 0.0,
             data: Data::String(value.into()),
-            string_value: "",
-            time: 0.0,
+            time: time_warped(),
             key: key.into(),
             source: String::new(),
             source_aux: String::new(),
@@ -61,9 +57,7 @@ impl<'m> Message<'m> {
         }
     }
 
-    /// TOOD: Remove this method. This is just a test to allow
-    /// a temporary client to connect to the MOOSDB
-    pub fn connect(client_name: &str) -> Self {
+    pub(crate) fn connect(client_name: &str) -> Self {
         Message {
             id: -1,                          //
             message_type: MessageType::Data, //
@@ -71,7 +65,6 @@ impl<'m> Message<'m> {
             double_value: -1.0,
             double_value2: -1.0,
             data: Data::String(client_name.into()),
-            string_value: "",
             time: time_warped(),
             key: ASYNCHRONOUS.into(),
             source: String::new(),
@@ -80,8 +73,7 @@ impl<'m> Message<'m> {
         }
     }
 
-    // TODO: Switch this to pub(crate)
-    pub fn timing(client_name: &str) -> Self {
+    pub(crate) fn timing(client_name: &str) -> Self {
         Message {
             id: -1,                            //
             message_type: MessageType::Timing, //
@@ -89,7 +81,6 @@ impl<'m> Message<'m> {
             double_value: 0.0,
             double_value2: -1.0,
             data: Data::String(client_name.into()),
-            string_value: "",
             time: time_warped(),
             key: "_async_timing".into(),
             source: String::new(),
@@ -98,7 +89,7 @@ impl<'m> Message<'m> {
         }
     }
 
-    pub fn register(client_name: &str, key: &str, interval: f64) -> Self {
+    pub(crate) fn register(client_name: &str, key: &str, interval: f64) -> Self {
         Message {
             id: -1,                              //
             message_type: MessageType::Register, //
@@ -106,7 +97,6 @@ impl<'m> Message<'m> {
             double_value: interval,
             double_value2: -1.0,
             data: Data::String(client_name.into()),
-            string_value: "",
             time: time_warped(),
             key: key.into(),
             source: String::new(),
@@ -127,7 +117,6 @@ impl<'m> Message<'m> {
             double_value: 0.0,
             double_value2: 0.0,
             data: Data::Binary(Vec::new()),
-            string_value: "",
             time: 0.0,
             key: key.into(),
             source: String::new(),
@@ -240,7 +229,6 @@ impl<'m> Message<'m> {
             double_value,
             double_value2,
             data,
-            string_value: "",
             time,
             key,
             source,
@@ -294,7 +282,7 @@ impl<'m> Message<'m> {
              + mem::size_of::<i8>() // data type 
              + mem::size_of::<i32>() + self.source.len()
              + mem::size_of::<i32>() + self.source_aux.len()
-             + mem::size_of::<i32>() + self.string_value.len()
+             + mem::size_of::<i32>() + self.originating_community.len()
              + mem::size_of::<i32>() + self.key.len()
              + mem::size_of_val(&self.time)
              + mem::size_of_val(&self.double_value)
@@ -307,7 +295,7 @@ impl<'m> Message<'m> {
     }
 }
 
-impl<'m> Display for Message<'m> {
+impl Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(type: {:?}", self.message_type())?;
         write!(f, ",data_type: {:?}", self.data_type())?;

@@ -30,15 +30,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
 
             client.subscribe("DB_CLIENTS", 0.0).await;
-            client.read_loop().await;
 
             // TODO: Need to update the client to periodically sent a heartbeat message.
 
-            if let Err(e) = client.disconnect().await {
-                eprintln!("Failed to disconnect! {:?}", e);
-                return;
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            // if let Err(e) = client.disconnect().await {
+            //     eprintln!("Failed to disconnect! {:?}", e);
+            //     return;
+            // }
+            tokio::time::sleep(tokio::time::Duration::from_millis(500000)).await;
         }
     });
 
