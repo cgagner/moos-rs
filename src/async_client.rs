@@ -11,6 +11,7 @@ use crate::{time_local, time_unwarped, time_warped};
 use log::{debug, error, info, trace, warn};
 use std::net::{Shutdown, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf},
@@ -280,19 +281,8 @@ impl AsyncClient {
     ) -> errors::Result<()> {
         // TODO: Need to set the size from a configuration
         let mut read_buffer = vec![0; 200000];
-        let mut time = std::time::Instant::now();
         loop {
             trace!("read_loop");
-            // TODO: Need to move the timing into a separate task
-            if time.elapsed() > std::time::Duration::from_millis(1000) {
-                warn!("Sending timing message");
-                time = std::time::Instant::now();
-                // TODO: Get the client name
-                let timing = Message::timing("umm-1");
-                if let Err(e) = outbox.send(timing) {
-                    error!("Failed to send the timing message. {}", e);
-                }
-            }
 
             let result = reader.read(&mut read_buffer).await;
 
@@ -321,10 +311,19 @@ impl AsyncClient {
         // TODO: Need to set the size from a configuration
         let mut write_buffer = vec![0; 200000];
         loop {
-            if let Some(message) = outbox.recv().await {
+            let message = if let Ok(msg) =
+                tokio::time::timeout(Duration::from_millis(1000), outbox.recv()).await
+            {
+                msg
+            } else {
+                // We haven't sent a message in a second. Send a heartbeat
+                trace!("AsyncClient hasn't sent a message in over a second. Sending a heartbeat.");
+                let message = Message::timing("umm-1");
+                Some(message)
+            };
+            if let Some(message) = message {
                 // TODO: Don't use unwrap
                 let len = crate::message::encode_slice(&message, &mut write_buffer).unwrap();
-
                 let result = writer.write(&mut write_buffer[0..len]).await;
                 if let Err(e) = result {
                     error!("Failed to write a message: {}", e);
