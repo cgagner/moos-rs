@@ -89,6 +89,7 @@ impl AsyncClient {
 
     /// Connect to the MOOS Database.
     pub async fn connect(&mut self) -> errors::Result<()> {
+        let client_name: String = self.get_community().into();
         if self.is_connected() {
             return Ok(());
         }
@@ -135,7 +136,7 @@ impl AsyncClient {
             AsyncClient::read_loop(reader, reader_outbox).await;
         });
 
-        tokio::spawn(async move { AsyncClient::write_loop(writer, rx).await });
+        tokio::spawn(async move { AsyncClient::write_loop(writer, rx, client_name).await });
 
         self.outbox = Some(outbox.clone());
         Ok(())
@@ -307,6 +308,7 @@ impl AsyncClient {
     async fn write_loop(
         mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
         mut outbox: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        client_name: String,
     ) {
         // TODO: Need to set the size from a configuration
         let mut write_buffer = vec![0; 200000];
@@ -318,7 +320,7 @@ impl AsyncClient {
             } else {
                 // We haven't sent a message in a second. Send a heartbeat
                 trace!("AsyncClient hasn't sent a message in over a second. Sending a heartbeat.");
-                let message = Message::timing("umm-1");
+                let message = Message::timing(client_name.as_str());
                 Some(message)
             };
             if let Some(message) = message {
