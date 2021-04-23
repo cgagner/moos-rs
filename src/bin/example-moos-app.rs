@@ -46,9 +46,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         println!("Connected! Community: {}", client.get_community());
     }
 
+    let mut inbox = client.start_consuming();
+
     for s in sub_vars {
         client.subscribe(&s, 0.0);
     }
+    let mut counter = 0;
 
     let task1 = tokio::spawn(async move {
         loop {
@@ -56,8 +59,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
             client.publish("TEST_12", "TRUE");
 
+            if let Some(message) = inbox.recv().await {
+                log::warn!("Received Message: {}", message);
+            }
             println!("Finished publishing RETURN");
 
+            if counter == 5 {
+                inbox.close();
+            }
+            counter += 1;
             // TODO: Need to update the client to periodically sent a heartbeat message.
 
             // if let Err(e) = client.disconnect().await {

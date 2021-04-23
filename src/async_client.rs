@@ -9,15 +9,21 @@ use crate::{
 use crate::{time_local, time_unwarped, time_warped};
 
 use log::{debug, error, info, trace, warn};
-use std::net::{Shutdown, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{
+    net::{Shutdown, SocketAddr},
+    ops::DerefMut,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf},
     net::TcpStream,
+    sync::{mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender},
     time::sleep,
 };
+
+type Inbox = Arc<Mutex<Option<UnboundedSender<Message>>>>;
 
 pub struct AsyncClient {
     stream: Option<TcpStream>,
@@ -29,7 +35,8 @@ pub struct AsyncClient {
     database_port: u16,
     last_connected_time: f64,
     current_id: i32,
-    outbox: Option<tokio::sync::mpsc::UnboundedSender<Message>>,
+    outbox: Option<UnboundedSender<Message>>,
+    inbox: Inbox,
 }
 
 pub trait Publish<D> {
@@ -52,6 +59,7 @@ impl AsyncClient {
             last_connected_time: 0.0,
             current_id: 0,
             outbox: None,
+            inbox: Arc::new(Mutex::new(None)),
         }
     }
     pub fn is_connected(&self) -> bool {
@@ -129,11 +137,12 @@ impl AsyncClient {
 
         let (mut reader, mut writer) = tokio::io::split(stream);
 
-        let (outbox, rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+        let (outbox, rx) = mpsc::unbounded_channel::<Message>();
 
         let reader_outbox = outbox.clone();
+        let inbox = self.inbox.clone();
         tokio::spawn(async move {
-            AsyncClient::read_loop(reader, reader_outbox).await;
+            AsyncClient::read_loop(reader, reader_outbox, inbox).await;
         });
 
         tokio::spawn(async move { AsyncClient::write_loop(writer, rx, client_name).await });
@@ -170,6 +179,20 @@ impl AsyncClient {
         // the client name, timestamp, incrementing the id.
 
         return self.send_message(message);
+    }
+
+    pub fn start_consuming(&mut self) -> UnboundedReceiver<Message> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        if let Ok(inbox) = &mut self.inbox.lock() {
+            inbox.replace(tx);
+        }
+        rx
+    }
+
+    pub fn stop_consuming(&mut self) {
+        if let Ok(inbox) = &mut self.inbox.lock() {
+            inbox.take();
+        }
     }
 
     /// Send a message to the MOOSDB.
@@ -278,7 +301,8 @@ impl AsyncClient {
 
     async fn read_loop(
         mut reader: tokio::io::ReadHalf<tokio::net::TcpStream>,
-        mut outbox: tokio::sync::mpsc::UnboundedSender<Message>,
+        mut outbox: UnboundedSender<Message>,
+        inbox: Inbox,
     ) -> errors::Result<()> {
         // TODO: Need to set the size from a configuration
         let mut read_buffer = vec![0; 200000];
@@ -299,15 +323,34 @@ impl AsyncClient {
 
             trace!("Received {} messages.", msg_list.len());
 
-            for message in msg_list {
-                trace!("Received Message of type: {}", message);
+            // msg_list
+            //     .iter()
+            //     .filter_map(|msg| msg.is_notify())
+            //     .for_each(move |msg| {});
+
+            // TODO: We probably should only lock the inbox if we receive notify
+            if let Ok(i) = &mut inbox.lock() {
+                if let Some(tx) = i.deref_mut() {
+                    for message in msg_list {
+                        if message.is_notify() {
+                            if let Err(e) = tx.send(message) {
+                                error!("Failed to put message into the inbox: {}", e);
+                                i.take();
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // TODO: Should we continue to print a warning?
+                    warn!("AsyncClient is receiving messages, but no one is consuming them.");
+                }
             }
         }
     }
 
     async fn write_loop(
         mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
-        mut outbox: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        mut outbox: UnboundedReceiver<Message>,
         client_name: String,
     ) {
         // TODO: Need to set the size from a configuration
@@ -320,8 +363,7 @@ impl AsyncClient {
             } else {
                 // We haven't sent a message in a second. Send a heartbeat
                 trace!("AsyncClient hasn't sent a message in over a second. Sending a heartbeat.");
-                let message = Message::timing(client_name.as_str());
-                Some(message)
+                Some(Message::timing(client_name.as_str()))
             };
             if let Some(message) = message {
                 // TODO: Don't use unwrap

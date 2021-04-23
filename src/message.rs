@@ -197,6 +197,14 @@ impl Message {
         self.message_type
     }
 
+    pub(crate) fn is_notify(&self) -> bool {
+        if let MessageType::Notify = self.message_type {
+            true
+        } else {
+            false
+        }
+    }
+
     /// Key of the message.
     pub fn key(&self) -> &str {
         self.key.as_str()
