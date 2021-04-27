@@ -51,7 +51,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     for s in sub_vars {
         client.subscribe(&s, 0.0);
     }
-    let mut counter = 0;
+    let mut counter = 0_i32;
 
     let task1 = tokio::spawn(async move {
         loop {

@@ -17,6 +17,14 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: beta
+        override: true
       run: cargo build --verbose
     - name: Run tests
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: beta
+        override: true
       run: cargo test --verbose
