@@ -20,7 +20,8 @@ Tasks:
     - [x] Start read loop
     - [x] Publish (Basic)
     - [x] Subscribe (Basic)
-    - [ ] Unsubscribe (Basic)
+    - [x] Unsubscribe (Basic)
+    - [ ] Store/clear list of subscribed variables.
     - [ ] Subscribe wildcard
     - [ ] Unsubscribe wildcard
     - [ ] On Connect Callback

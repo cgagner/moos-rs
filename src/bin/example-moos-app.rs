@@ -60,17 +60,22 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             client.publish("TEST_12", "TRUE");
 
             for message in inbox.try_iter() {
-                log::info!("Received Message: {}", message);
+                log::error!("Received Message: {}", message);
             }
 
             log::info!("Finished publishing RETURN");
 
-            if counter == 5 {
-                log::error!(
-                    "Testing stopping the comsumer to see if the client handles it gracefully."
-                );
-                client.stop_consuming();
+            if counter == 4 {
+                log::error!("Testing unsubscribe");
+                client.unsubscribe("TEST_12");
             }
+
+            // if counter == 5 {
+            //     log::error!(
+            //         "Testing stopping the comsumer to see if the client handles it gracefully."
+            //     );
+            //     client.stop_consuming();
+            // }
             counter += 1;
             // TODO: Need to update the client to periodically sent a heartbeat message.
 

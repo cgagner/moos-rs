@@ -174,9 +174,22 @@ impl AsyncClient {
 
         let mut message = Message::register(self.get_name(), key, interval);
 
-        // TODO: Need to create a helper method or a builder to handle setting
-        // the other fields of the message from the client. This includes
-        // the client name, timestamp, incrementing the id.
+        // TODO: Need to store the variable being registered. May also
+        // need to store the filter
+
+        return self.send_message(message);
+    }
+
+    pub fn unsubscribe(&mut self, key: &str) -> errors::Result<()> {
+        if !self.is_connected() {
+            return Err(errors::Error::General(
+                "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
+            ));
+        }
+
+        let mut message = Message::unregister(self.get_name(), key, 0.0);
+
+        // TODO: Need to remove the variable being registered.
 
         return self.send_message(message);
     }

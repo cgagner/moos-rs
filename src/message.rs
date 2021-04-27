@@ -105,6 +105,22 @@ impl Message {
         }
     }
 
+    pub(crate) fn unregister(client_name: &str, key: &str, interval: f64) -> Self {
+        Message {
+            id: -1,                                //
+            message_type: MessageType::Unregister, //
+            data_type: DataType::Double,
+            double_value: interval,
+            double_value2: -1.0,
+            data: Data::String(client_name.into()),
+            time: time_warped(),
+            key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
     /// Create a new message
     pub(crate) fn new<S>(message_type: MessageType, key: S) -> Self
     where
