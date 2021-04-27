@@ -55,17 +55,21 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let task1 = tokio::spawn(async move {
         loop {
-            println!("Task running1");
+            log::info!("Task running1");
 
             client.publish("TEST_12", "TRUE");
 
-            if let Some(message) = inbox.recv().await {
-                log::warn!("Received Message: {}", message);
+            for message in inbox.try_iter() {
+                log::info!("Received Message: {}", message);
             }
-            println!("Finished publishing RETURN");
+
+            log::info!("Finished publishing RETURN");
 
             if counter == 5 {
-                inbox.close();
+                log::error!(
+                    "Testing stopping the comsumer to see if the client handles it gracefully."
+                );
+                client.stop_consuming();
             }
             counter += 1;
             // TODO: Need to update the client to periodically sent a heartbeat message.

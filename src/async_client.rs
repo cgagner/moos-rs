@@ -23,7 +23,7 @@ use tokio::{
     time::sleep,
 };
 
-type Inbox = Arc<Mutex<Option<UnboundedSender<Message>>>>;
+type Inbox = Arc<Mutex<Option<std::sync::mpsc::Sender<Message>>>>;
 
 pub struct AsyncClient {
     stream: Option<TcpStream>,
@@ -181,8 +181,8 @@ impl AsyncClient {
         return self.send_message(message);
     }
 
-    pub fn start_consuming(&mut self) -> UnboundedReceiver<Message> {
-        let (tx, rx) = mpsc::unbounded_channel();
+    pub fn start_consuming(&mut self) -> std::sync::mpsc::Receiver<Message> {
+        let (tx, rx) = std::sync::mpsc::channel();
         if let Ok(inbox) = &mut self.inbox.lock() {
             inbox.replace(tx);
         }
@@ -323,12 +323,8 @@ impl AsyncClient {
 
             trace!("Received {} messages.", msg_list.len());
 
-            // msg_list
-            //     .iter()
-            //     .filter_map(|msg| msg.is_notify())
-            //     .for_each(move |msg| {});
+            // TODO: We probably should only lock the inbox if we receive notify messages
 
-            // TODO: We probably should only lock the inbox if we receive notify
             if let Ok(i) = &mut inbox.lock() {
                 if let Some(tx) = i.deref_mut() {
                     for message in msg_list {
