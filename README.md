@@ -48,6 +48,10 @@ cargo run -- --moos_name=umm-2 -s=TEST_12
 ```
 
 
+# Credits
+
+## Images
+- Moose Icon: Image by <a href="https://pixabay.com/users/openclipart-vectors-30363/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=159022">OpenClipart-Vectors</a> from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=159022">Pixabay</a>
 
 
 
