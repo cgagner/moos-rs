@@ -1,6 +1,6 @@
 # MOOS Client library for Rust
 
-The Missino Oriented Operating Suite (MOOS) is a light weight, easy to use 
+The Mission Oriented Operating Suite (MOOS) is a light weight, easy to use 
 middleware for robots. 
 
 More information about MOOS can be found 
