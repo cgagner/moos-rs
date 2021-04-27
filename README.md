@@ -20,6 +20,9 @@ Tasks:
     - [x] Start read loop
     - [x] Publish (Basic)
     - [x] Subscribe (Basic)
+    - [ ] Unsubscribe (Basic)
+    - [ ] Subscribe wildcard
+    - [ ] Unsubscribe wildcard
     - [ ] On Connect Callback
     - [ ] On Disconnect Callback
     - [ ] Subscribe with fitler
