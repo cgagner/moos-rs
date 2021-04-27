@@ -16,15 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
+    - name: Install Rust Beta
       uses: actions-rs/toolchain@v1
       with:
         toolchain: beta
         override: true
+    - name: Build
       run: cargo build --verbose
     - name: Run tests
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: beta
-        override: true
       run: cargo test --verbose
