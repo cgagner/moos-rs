@@ -105,6 +105,22 @@ impl Message {
         }
     }
 
+    pub(crate) fn wildcard_register(client_name: &str, value: &str) -> Self {
+        Message {
+            id: -1,                                      //
+            message_type: MessageType::WildcardRegister, //
+            data_type: DataType::String,
+            double_value: -1.0,
+            double_value2: -1.0,
+            data: Data::String(value.into()),
+            time: time_warped(),
+            key: client_name.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
     pub(crate) fn unregister(client_name: &str, key: &str, interval: f64) -> Self {
         Message {
             id: -1,                                //
@@ -115,6 +131,22 @@ impl Message {
             data: Data::String(client_name.into()),
             time: time_warped(),
             key: key.into(),
+            source: String::new(),
+            source_aux: String::new(),
+            originating_community: String::new(),
+        }
+    }
+
+    pub(crate) fn wildcard_unregister(client_name: &str, value: &str) -> Self {
+        Message {
+            id: -1,                                        //
+            message_type: MessageType::WildcardUnregister, //
+            data_type: DataType::String,
+            double_value: -1.0,
+            double_value2: -1.0,
+            data: Data::String(value.into()),
+            time: time_warped(),
+            key: client_name.into(),
             source: String::new(),
             source_aux: String::new(),
             originating_community: String::new(),

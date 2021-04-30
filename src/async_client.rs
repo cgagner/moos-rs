@@ -165,11 +165,35 @@ impl AsyncClient {
         Ok(())
     }
 
+    /// Subscribe to messages with the specified key at the specified interval.
+    ///
+    /// Arguments:
+    ///
+    /// * `key`: Key of the messages the client is subscribing to. **NOTE:**
+    ///          If the key contains wildcard characters (`*` or `?`), the
+    ///          client will perform a wildcard subscription.
+    /// * `interval`: Interval at which the client should receive messages.
+    ///               0.0 to receive messages as soon as the value is chagned.
+    ///
+    /// Returns: [`errors::Error::General`] if the key is empty or the client is
+    /// not connected.
     pub fn subscribe(&mut self, key: &str, interval: f64) -> errors::Result<()> {
         if !self.is_connected() {
             return Err(errors::Error::General(
                 "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
             ));
+        }
+
+        if key.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot subscribe to an empty key string.",
+            ));
+        }
+
+        // If the key contains a wildcard character, use the subscribe_from
+        // method to handle sending a wildcard register
+        if key.contains("*") || key.contains("?") {
+            return self.subscribe_from(key, "*", interval);
         }
 
         let mut message = Message::register(self.get_name(), key, interval);
@@ -180,6 +204,75 @@ impl AsyncClient {
         return self.send_message(message);
     }
 
+    /// Subscribe to messages from a specific application with the specified
+    /// key at the specified interval.
+    ///
+    /// Arguments:
+    ///
+    /// * `key`: Key of the messages the client is subscribing to. **NOTE:**
+    ///          If the key contains wildcard characters (`*` or `?`), the
+    ///          client will perform a wildcard subscription.
+    /// * `app_pattern`: Application or applications to receive messages from.
+    ///                  This can contain wildcard characters (`*` or `?`) to
+    ///                  subscribe to multiple clients. This filtering happens
+    ///                  at the MOOSDB side.
+    /// * `interval`: Interval at which the client should receive messages.
+    ///               0.0 to receive messages as soon as the value is chagned.
+    ///
+    /// Returns: [`errors::Error::General`] if the `key` or `app_pattern` are
+    /// empty or the client is not connected.
+    pub fn subscribe_from(
+        &mut self,
+        key: &str,
+        app_pattern: &str,
+        interval: f64,
+    ) -> errors::Result<()> {
+        if !self.is_connected() {
+            return Err(errors::Error::General(
+                "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
+            ));
+        }
+
+        if key.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot subscribe to an empty key string.",
+            ));
+        }
+
+        if app_pattern.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot subscribe to an empty app_pattern string.",
+            ));
+        }
+
+        let string_value = format!(
+            "AppPattern={},VarPattern={},Interval={}",
+            app_pattern, key, interval
+        );
+
+        let mut message = Message::wildcard_register(self.get_name(), string_value.as_str());
+
+        // TODO: Need to store the variable being registered. May also
+        // need to store the filter
+
+        return self.send_message(message);
+    }
+
+    /// Unsubscribe to messages with the specified `key`.
+    ///
+    /// ***NOTE***: It is still possible to receive a few messages after the
+    ///             client successfully unsubscribes to messages with a given
+    ///             `key`. This will happen if the MOOSDB has already queued
+    ///             messages to be delivered to the client.
+    ///
+    /// Arguments:
+    ///
+    /// * `key`: Key of the messages the client is unsubscribing to. **NOTE:**
+    ///          If the key contains wildcard characters (`*` or `?`), the
+    ///          client will perform a wildcard unsubscription.
+    ///
+    /// Returns: [`errors::Error::General`] if the `key` is empty
+    /// or the client is not connected.
     pub fn unsubscribe(&mut self, key: &str) -> errors::Result<()> {
         if !self.is_connected() {
             return Err(errors::Error::General(
@@ -187,11 +280,80 @@ impl AsyncClient {
             ));
         }
 
+        // TODO: Check if the key is in the list of registered keys
+
+        if key.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot unsubscribe to an empty key string.",
+            ));
+        }
+
         let mut message = Message::unregister(self.get_name(), key, 0.0);
 
-        // TODO: Need to remove the variable being registered.
+        let result = self.send_message(message);
 
-        return self.send_message(message);
+        if let Ok(()) = result {
+            // TODO: Need to remove the variable being registered.
+        }
+
+        return result;
+    }
+
+    /// Unsubscribe to messages from a specific application with the
+    /// specified `key`.
+    ///
+    /// ***NOTE***: It is still possible to receive a few messages after the
+    ///             client successfully unsubscribes to messages with a given
+    ///             `key`. This will happen if the MOOSDB has already queued
+    ///             messages to be delivered to the client.
+    ///
+    /// Arguments:
+    ///
+    /// * `key`: Key of the messages the client is unsubscribing to. **NOTE:**
+    ///          If the key contains wildcard characters (`*` or `?`), the
+    ///          client will perform a wildcard unsubscription.
+    /// * `app_pattern`: Application or applications to receive messages from.
+    ///                  This can contain wildcard characters (`*` or `?`) to
+    ///                  subscribe to multiple clients. This filtering happens
+    ///                  at the MOOSDB side.
+    ///
+    /// Returns: [`errors::Error::General`] if the `key` or `app_pattern` are
+    /// empty or the client is not connected.
+    pub fn unsubscribe_from(&mut self, key: &str, app_pattern: &str) -> errors::Result<()> {
+        if !self.is_connected() {
+            return Err(errors::Error::General(
+                "AsyncClient::subscribe: cannot subscribe because the client is not connected.",
+            ));
+        }
+
+        // TODO: Check to see if the set of registered keys is empty
+
+        if key.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot unsubscribe to an empty key string.",
+            ));
+        }
+
+        if app_pattern.is_empty() {
+            return Err(errors::Error::General(
+                "Cannot unsubscribe to an empty app_pattern string.",
+            ));
+        }
+
+        let string_value = format!(
+            "AppPattern={},VarPattern={},Interval={}",
+            app_pattern, key, 0.0
+        );
+
+        let mut message = Message::wildcard_unregister(self.get_name(), string_value.as_str());
+
+        let result = self.send_message(message);
+
+        if let Ok(()) = result {
+            // TODO: Need to remove the variable being registered.
+        }
+
+        return result;
     }
 
     pub fn start_consuming(&mut self) -> std::sync::mpsc::Receiver<Message> {

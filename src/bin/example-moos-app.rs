@@ -20,6 +20,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut client_name: String = "umm-1".into();
     let mut sub_vars = Vec::<String>::new();
+    let mut wildcard_sub_vars = Vec::<String>::new();
     for arg in args {
         //
         if arg.starts_with("-") || arg.starts_with("--") {
@@ -34,6 +35,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             match name {
                 "moos_name" => client_name = opt.into(),
                 "s" => sub_vars.push(opt.into()),
+                "w" => wildcard_sub_vars.push(opt.into()),
                 _ => log::error!("Unknown argument: {}", name),
             }
         }
@@ -49,8 +51,16 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let mut inbox = client.start_consuming();
 
     for s in sub_vars {
+        // TODO: We should parse the interval from the command line arguments
         client.subscribe(&s, 0.0);
     }
+
+    for w in &wildcard_sub_vars {
+        // TODO: We should parse the interval and app_pattern from the command line arguments
+        log::error!("Wildcard subcription: {}", w);
+        client.subscribe_from(&w, "*", 0.0);
+    }
+
     let mut counter = 0_i32;
 
     let task1 = tokio::spawn(async move {
@@ -70,6 +80,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 client.unsubscribe("TEST_12");
             }
 
+            if counter == 10 {
+                log::error!("Testing wildcard unsubscribe");
+                for w in &wildcard_sub_vars {
+                    client.unsubscribe_from(w, "*");
+                }
+            }
             // if counter == 5 {
             //     log::error!(
             //         "Testing stopping the comsumer to see if the client handles it gracefully."

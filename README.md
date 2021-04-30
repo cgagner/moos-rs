@@ -21,15 +21,20 @@ Tasks:
     - [x] Publish (Basic)
     - [x] Subscribe (Basic)
     - [x] Unsubscribe (Basic)
+    - [x] On Subscribe, var name cannot be empty
     - [ ] Store/clear list of subscribed variables.
-    - [ ] Subscribe wildcard
-    - [ ] Unsubscribe wildcard
+    - [x] Subscribe wildcard (AppPattern=*,VarPattern=*,Interval=0.0)
+    - [x] Unsubscribe wildcard
     - [ ] On Connect Callback
     - [ ] On Disconnect Callback
     - [ ] Subscribe with fitler
     - [ ] Subscribe with callback
     - [ ] Publish with automatic type conversions
+    - [ ] Need to fix the latency timing reported in the DB_QOS message.
 - [ ] MOOS Application struct or macro
+    - [ ] Parse mission file
+    - [ ] Parse arguments
+    - [ ] Handle publishing App status (e.g. CPU load)
 - [ ] Example / Tutorial
 
 
