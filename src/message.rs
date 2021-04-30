@@ -81,7 +81,7 @@ impl Message {
             double_value: 0.0,
             double_value2: -1.0,
             data: Data::String(client_name.into()),
-            time: time_warped(),
+            time: time_local(true),
             key: "_async_timing".into(),
             source: String::new(),
             source_aux: String::new(),

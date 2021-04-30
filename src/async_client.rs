@@ -84,8 +84,13 @@ impl AsyncClient {
     }
 
     /// Connect to the MOOS database on the specified host and port.
+    ///
+    /// Arguments:
+    ///
     /// * `host`: hostname or IP address of the MOOS database
     /// * `port`: port of the MOOS database
+    ///
+    /// Returns: [`Err`] if the connection fails.
     pub async fn connect_to<S>(&mut self, host: S, port: u16) -> errors::Result<()>
     where
         S: Into<String>,

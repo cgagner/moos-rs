@@ -30,7 +30,7 @@ Tasks:
     - [ ] Subscribe with fitler
     - [ ] Subscribe with callback
     - [ ] Publish with automatic type conversions
-    - [ ] Need to fix the latency timing reported in the DB_QOS message.
+    - [x] Need to fix the latency timing reported in the DB_QOS message.
 - [ ] MOOS Application struct or macro
     - [ ] Parse mission file
     - [ ] Parse arguments
