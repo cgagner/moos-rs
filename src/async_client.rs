@@ -157,13 +157,15 @@ impl AsyncClient {
         let mut stream = match result {
             Ok(stream) => stream,
             Err(e) => {
+                let _ = self.disconnect().await;
                 return Err(errors::Error::General(
                     "AsyncClient somehow got an invalid stream while connecting.",
-                ))
+                ));
             }
         };
 
         if let Err(e) = self.handshake(&mut stream).await {
+            let _ = self.disconnect().await;
             return Err(e);
         }
 
@@ -180,7 +182,7 @@ impl AsyncClient {
         let reader_outbox = outbox.clone();
         let inbox = self.inbox.clone();
         tokio::spawn(async move {
-            AsyncClient::read_loop(reader, reader_outbox, inbox).await;
+            let _ = AsyncClient::read_loop(reader, reader_outbox, inbox).await;
         });
 
         tokio::spawn(async move { AsyncClient::write_loop(writer, rx, client_name).await });
@@ -199,7 +201,10 @@ impl AsyncClient {
         }
         self.stream = None;
 
-        // TODO: Need to call the on_disconnect callback
+        if let Some(on_disconnect) = self.on_disconnect_callback {
+            on_disconnect();
+        }
+
         Ok(())
     }
 
@@ -531,6 +536,12 @@ impl AsyncClient {
                     continue;
                 }
             } else {
+                if let Err(e) = result {
+                    // TODO: Need to figure out how to call shutdown
+                    // match e.kind() {
+                    //
+                    // }
+                }
                 return Err(errors::Error::General("Failed to decode message."));
             };
 
@@ -585,6 +596,8 @@ impl AsyncClient {
                             "Failed to shutdown client after failing to send.. Double fail: {}",
                             ee
                         );
+                        break;
+                        // TODO: Need to figure out how to how to call disconnect
                     }
                 }
             }

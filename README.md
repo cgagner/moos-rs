@@ -26,8 +26,8 @@ Tasks:
     - [x] Subscribe wildcard (AppPattern=*,VarPattern=*,Interval=0.0)
     - [x] Unsubscribe wildcard
     - [x] On Connect Callback
-    - [ ] On Disconnect Callback
-    - [ ] Add a close method to the client
+    - [x] On Disconnect Callback
+    - [ ] Call disconnect when there is a error on the socket.
     - [ ] Subscribe with fitler
     - [ ] Subscribe with callback
     - [ ] Publish with automatic type conversions

@@ -49,6 +49,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         log::error!("Client Connected!!");
     });
 
+    client.set_on_disconnect(|| {
+        log::error!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nClient Disconnected!!");
+        // TODO: This is for testing.. Don't really do this
+        std::process::exit(-1);
+    });
+
     if let Ok(()) = client.connect().await {
         println!("Connected! Community: {}", client.get_community());
     }
