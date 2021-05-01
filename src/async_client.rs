@@ -37,6 +37,8 @@ pub struct AsyncClient {
     current_id: i32,
     outbox: Option<UnboundedSender<Message>>,
     inbox: Inbox,
+    on_connect_callback: Option<fn()>,
+    on_disconnect_callback: Option<fn()>,
 }
 
 pub trait Publish<D> {
@@ -44,7 +46,7 @@ pub trait Publish<D> {
 }
 
 impl AsyncClient {
-    pub async fn new<S>(name: S) -> Self
+    pub fn new<S>(name: S) -> Self
     where
         S: Into<String>,
     {
@@ -60,8 +62,11 @@ impl AsyncClient {
             current_id: 0,
             outbox: None,
             inbox: Arc::new(Mutex::new(None)),
+            on_connect_callback: None,
+            on_disconnect_callback: None,
         }
     }
+
     pub fn is_connected(&self) -> bool {
         self.outbox.is_some()
     }
@@ -81,6 +86,32 @@ impl AsyncClient {
     pub fn is_time_correction_enabled(&self) -> bool {
         /// TODO
         return true;
+    }
+
+    /// Set the callback to be called when the client is conected.
+    ///
+    /// ```
+    /// use moos::async_client::AsyncClient;
+    /// let mut client = AsyncClient::new("ClientName");
+    /// client.set_on_connect(move || {
+    ///     log::error!("Client Connected!");
+    /// });
+    /// ```
+    pub fn set_on_connect(&mut self, on_connect: fn()) {
+        self.on_connect_callback = Some(on_connect);
+    }
+
+    /// Set the callback to be called when the client is disconected.
+    ///
+    /// ```
+    /// use moos::async_client::AsyncClient;
+    /// let mut client = AsyncClient::new("ClientName");
+    /// client.set_on_disconnect(move || {
+    ///     log::error!("Client Disconnected!");
+    /// });
+    /// ```
+    pub fn set_on_disconnect(&mut self, on_disconnect: fn()) {
+        self.on_disconnect_callback = Some(on_disconnect);
     }
 
     /// Connect to the MOOS database on the specified host and port.
@@ -138,7 +169,9 @@ impl AsyncClient {
 
         self.last_connected_time = time_warped();
 
-        // TODO: Need to call the on_connect callback
+        if let Some(on_connect) = self.on_connect_callback {
+            on_connect();
+        }
 
         let (mut reader, mut writer) = tokio::io::split(stream);
 

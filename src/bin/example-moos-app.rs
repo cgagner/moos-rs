@@ -43,7 +43,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     log::trace!("Client name: {}", client_name);
 
-    let mut client = AsyncClient::new(client_name).await;
+    let mut client = AsyncClient::new(client_name);
+
+    client.set_on_connect(|| {
+        log::error!("Client Connected!!");
+    });
+
     if let Ok(()) = client.connect().await {
         println!("Connected! Community: {}", client.get_community());
     }

@@ -25,8 +25,9 @@ Tasks:
     - [ ] Store/clear list of subscribed variables.
     - [x] Subscribe wildcard (AppPattern=*,VarPattern=*,Interval=0.0)
     - [x] Unsubscribe wildcard
-    - [ ] On Connect Callback
+    - [x] On Connect Callback
     - [ ] On Disconnect Callback
+    - [ ] Add a close method to the client
     - [ ] Subscribe with fitler
     - [ ] Subscribe with callback
     - [ ] Publish with automatic type conversions
