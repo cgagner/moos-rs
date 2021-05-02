@@ -580,6 +580,7 @@ impl AsyncClient {
                 tokio::time::timeout(Duration::from_millis(1000), outbox.recv()).await
             {
                 msg
+                // TODO: Check to see if we've sent at timeine message recently
             } else {
                 // We haven't sent a message in a second. Send a heartbeat
                 trace!("AsyncClient hasn't sent a message in over a second. Sending a heartbeat.");
@@ -614,21 +615,21 @@ impl Publish<f64> for AsyncClient {
 
 impl Publish<&Vec<u8>> for AsyncClient {
     fn publish(&mut self, key: &str, value: &Vec<u8>) -> errors::Result<()> {
-        let mut message = Message::notify_data(key, value, crate::time_warped());
+        let message = Message::notify_data(key, value, crate::time_warped());
         return self.send_message(message);
     }
 }
 
 impl Publish<String> for AsyncClient {
     fn publish(&mut self, key: &str, value: String) -> errors::Result<()> {
-        let mut message = Message::notify_string(key, value, crate::time_warped());
+        let message = Message::notify_string(key, value, crate::time_warped());
         return self.send_message(message);
     }
 }
 
 impl Publish<&str> for AsyncClient {
     fn publish(&mut self, key: &str, value: &str) -> errors::Result<()> {
-        let mut message = Message::notify_string(key, value, crate::time_warped());
+        let message = Message::notify_string(key, value, crate::time_warped());
         return self.send_message(message);
     }
 }

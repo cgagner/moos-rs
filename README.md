@@ -32,6 +32,12 @@ Tasks:
     - [ ] Subscribe with callback
     - [ ] Publish with automatic type conversions
     - [x] Need to fix the latency timing reported in the DB_QOS message.
+    - [ ] Update connect to reconnect if the the client is disconnected 
+          from the db
+    - [ ] Load in a configuration
+        - [ ] Size of read/write buffers
+        - [ ] Delay between reconnect attempts (default to 1)
+    - [ ] Add atomic bool or conditional variable to stop the client
 - [ ] MOOS Application struct or macro
     - [ ] Parse mission file
     - [ ] Parse arguments

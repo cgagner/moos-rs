@@ -1,13 +1,12 @@
 extern crate moos;
 
-use std::{env, str, str::FromStr, thread::sleep};
+use std::env;
 
 use crate::moos::async_client::AsyncClient;
 use moos::async_client::Publish;
 use simple_logger::SimpleLogger;
 use std::error::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::{join, task};
+use tokio::join;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
@@ -56,20 +55,24 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     if let Ok(()) = client.connect().await {
-        println!("Connected! Community: {}", client.get_community());
+        log::info!("Connected! Community: {}", client.get_community());
     }
 
-    let mut inbox = client.start_consuming();
+    let inbox = client.start_consuming();
 
     for s in sub_vars {
         // TODO: We should parse the interval from the command line arguments
-        client.subscribe(&s, 0.0);
+        if let Err(e) = client.subscribe(&s, 0.0) {
+            log::error!("Failed to make subscription: {:?}", e);
+        }
     }
 
     for w in &wildcard_sub_vars {
         // TODO: We should parse the interval and app_pattern from the command line arguments
         log::error!("Wildcard subcription: {}", w);
-        client.subscribe_from(&w, "*", 0.0);
+        if let Err(e) = client.subscribe_from(&w, "*", 0.0) {
+            log::error!("Failed to make wildcard subscriptions: {:?} ", e);
+        }
     }
 
     let mut counter = 0_i32;
@@ -78,7 +81,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         loop {
             log::info!("Task running1");
 
-            client.publish("TEST_12", "TRUE");
+            if let Err(e) = client.publish("TEST_12", "TRUE") {
+                log::error!("Failed to publish message: {:?}", e);
+            }
 
             for message in inbox.try_iter() {
                 log::error!("Received Message: {}", message);
@@ -88,13 +93,17 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
             if counter == 4 {
                 log::error!("Testing unsubscribe");
-                client.unsubscribe("TEST_12");
+                if let Err(e) = client.unsubscribe("TEST_12") {
+                    log::error!("Failed to unsubscribe: {:?}", e);
+                }
             }
 
             if counter == 10 {
                 log::error!("Testing wildcard unsubscribe");
                 for w in &wildcard_sub_vars {
-                    client.unsubscribe_from(w, "*");
+                    if let Err(e) = client.unsubscribe_from(w, "*") {
+                        log::error!("Failed to call unsubscribe_from: {:?}", e);
+                    }
                 }
             }
             // if counter == 5 {
@@ -104,7 +113,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             //     client.stop_consuming();
             // }
             counter += 1;
-            // TODO: Need to update the client to periodically sent a heartbeat message.
 
             // if let Err(e) = client.disconnect().await {
             //     eprintln!("Failed to disconnect! {:?}", e);
@@ -121,7 +129,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    join!(task1, task2);
+    let _ = join!(task1, task2);
 
     Ok(())
 }
