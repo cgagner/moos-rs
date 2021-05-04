@@ -23,6 +23,7 @@ Tasks:
     - [x] Unsubscribe (Basic)
     - [x] On Subscribe, var name cannot be empty
     - [ ] Store/clear list of subscribed variables.
+    - [x] Store list of published variables
     - [x] Subscribe wildcard (AppPattern=*,VarPattern=*,Interval=0.0)
     - [x] Unsubscribe wildcard
     - [x] On Connect Callback

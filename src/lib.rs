@@ -84,6 +84,8 @@ fn get_safe_time_skew() -> Arc<RwLock<f64>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::async_client::AsyncClient;
+    use std::process::Command;
     use std::{cmp::Ordering, str::from_utf8};
 
     #[test]
@@ -122,5 +124,56 @@ mod tests {
 
         println!("TimeWarp: {}", get_time_warp());
         assert!((get_time_warp() - 2.0).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn int_test_subscibe() {
+        let mut child = Command::new("MOOSDB").arg("--moos_port=9999").spawn();
+        if let Err(e) = child {
+            println!("Could not find the MOOSDB application. Is it in your path?");
+            return;
+        }
+
+        let mut child = child.unwrap();
+
+        let mut client = AsyncClient::new("int_test_subscribe");
+
+        // TODO: Need to separate out the connect method from the connect loop. Setting
+        // this to an invalid port should return after some timeout.
+        if let Err(e) = client.connect_to("localhost", 9999_u16).await {
+            assert!(false);
+        }
+
+        client
+            .subscribe("NAV_Y", 0.0)
+            .expect("Failed to subscibe to NAV_Y");
+
+        assert!(client.get_subscribed_keys().contains("NAV_Y"));
+        // This should fail since we haven't subscribed to it yet.
+        assert!(!client.get_subscribed_keys().contains("NAV_X"));
+
+        client
+            .subscribe("NAV_X", 0.0)
+            .expect("Failed to subscibe to NAV_X");
+
+        assert!(client.get_subscribed_keys().contains("NAV_Y"));
+        assert!(client.get_subscribed_keys().contains("NAV_X"));
+
+        // Unsubscribe
+        client
+            .unsubscribe("NAV_Y")
+            .expect("Failed to unsubscribe to NAV_Y");
+
+        assert!(!client.get_subscribed_keys().contains("NAV_Y"));
+        assert!(client.get_subscribed_keys().contains("NAV_X"));
+
+        client
+            .unsubscribe("NAV_X")
+            .expect("Failed to unsubscribe to NAV_X");
+
+        assert!(!client.get_subscribed_keys().contains("NAV_Y"));
+        assert!(!client.get_subscribed_keys().contains("NAV_X"));
+
+        child.kill().expect("Failed to kill MOOSDB");
     }
 }

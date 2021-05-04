@@ -9,6 +9,7 @@ use crate::{
 use crate::{time_local, time_unwarped, time_warped};
 
 use log::{debug, error, info, trace, warn};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{
@@ -39,6 +40,9 @@ pub struct AsyncClient {
     inbox: Inbox,
     on_connect_callback: Option<fn()>,
     on_disconnect_callback: Option<fn()>,
+    published_keys: HashSet<String>,
+    subscribed_keys: HashSet<String>,
+    wildcard_subscribed_keys: HashMap<String, HashSet<String>>,
 }
 
 pub trait Publish<D> {
@@ -46,6 +50,11 @@ pub trait Publish<D> {
 }
 
 impl AsyncClient {
+    /// Create a new asynchronous client with the specified name.
+    ///
+    /// Arguments:
+    ///
+    /// * `name`: Name of the client
     pub fn new<S>(name: S) -> Self
     where
         S: Into<String>,
@@ -64,6 +73,9 @@ impl AsyncClient {
             inbox: Arc::new(Mutex::new(None)),
             on_connect_callback: None,
             on_disconnect_callback: None,
+            published_keys: HashSet::new(),
+            subscribed_keys: HashSet::new(),
+            wildcard_subscribed_keys: HashMap::new(),
         }
     }
 
@@ -81,6 +93,26 @@ impl AsyncClient {
     /// Get the name of the client
     pub fn get_name(&self) -> &str {
         self.name.as_str()
+    }
+
+    /// Get the keys published by the client.
+    /// Returns: Borrow of the [`HashSet<String>`] that have been publisehd
+    ///          by the client.
+    pub fn get_published_keys(&self) -> &HashSet<String> {
+        return &self.published_keys;
+    }
+
+    /// Get the keys subscribed to by the client.
+    /// Returns: Borrow of the [`HashSet<String>`] that has been subscribed
+    ///          to by the client.
+    pub fn get_subscribed_keys(&self) -> &HashSet<String> {
+        return &self.subscribed_keys;
+    }
+
+    /// Check if the specified key is in the list of being subscribed to by
+    /// the client.
+    pub fn is_subscribed_to(&self, key: &str) -> bool {
+        self.subscribed_keys.contains(key)
     }
 
     pub fn is_time_correction_enabled(&self) -> bool {
@@ -208,6 +240,11 @@ impl AsyncClient {
         Ok(())
     }
 
+    /// Check if a key contains wildcards.
+    fn is_wildcard(key: &str) -> bool {
+        key.contains("*") || key.contains("?")
+    }
+
     /// Subscribe to messages with the specified key at the specified interval.
     ///
     /// Arguments:
@@ -235,16 +272,19 @@ impl AsyncClient {
 
         // If the key contains a wildcard character, use the subscribe_from
         // method to handle sending a wildcard register
-        if key.contains("*") || key.contains("?") {
+        if Self::is_wildcard(key) {
             return self.subscribe_from(key, "*", interval);
         }
 
-        let mut message = Message::register(self.get_name(), key, interval);
+        let message = Message::register(self.get_name(), key, interval);
 
-        // TODO: Need to store the variable being registered. May also
-        // need to store the filter
+        // TODO: May need to store the filter - when we add filters
 
-        return self.send_message(message);
+        let result = self.send_message(message);
+        if let Ok(()) = result {
+            self.subscribed_keys.insert(key.to_string());
+        }
+        return result;
     }
 
     /// Subscribe to messages from a specific application with the specified
@@ -293,12 +333,23 @@ impl AsyncClient {
             app_pattern, key, interval
         );
 
-        let mut message = Message::wildcard_register(self.get_name(), string_value.as_str());
+        let message = Message::wildcard_register(self.get_name(), string_value.as_str());
 
-        // TODO: Need to store the variable being registered. May also
-        // need to store the filter
+        let result = self.send_message(message);
 
-        return self.send_message(message);
+        if let Ok(()) = result {
+            // TODO: May need to store the filter
+            if let Some(apps) = self.wildcard_subscribed_keys.get_mut(key) {
+                apps.insert(app_pattern.to_string());
+            } else {
+                self.wildcard_subscribed_keys.insert(
+                    key.to_string(),
+                    vec![app_pattern.to_string()].into_iter().collect(),
+                );
+            }
+        }
+
+        return result;
     }
 
     /// Unsubscribe to messages with the specified `key`.
@@ -323,20 +374,34 @@ impl AsyncClient {
             ));
         }
 
-        // TODO: Check if the key is in the list of registered keys
-
         if key.is_empty() {
             return Err(errors::Error::General(
                 "Cannot unsubscribe to an empty key string.",
             ));
         }
 
-        let mut message = Message::unregister(self.get_name(), key, 0.0);
+        // If the key contains a wildcard character, use the unsubscribe_from
+        // method to handle sending a wildcard register
+        if Self::is_wildcard(key) {
+            return self.unsubscribe_from(key, "*");
+        }
+
+        // If we haven't subscibed to the key, we don't need to send
+        // a message to unsubscibe.
+        if !self.subscribed_keys.contains(key) {
+            log::info!(
+                "Cannot unsubscribe to {} because we never subscribed to it.",
+                key
+            );
+            return Ok(());
+        }
+
+        let message = Message::unregister(self.get_name(), key, 0.0);
 
         let result = self.send_message(message);
 
         if let Ok(()) = result {
-            // TODO: Need to remove the variable being registered.
+            self.subscribed_keys.remove(key);
         }
 
         return result;
@@ -369,8 +434,6 @@ impl AsyncClient {
             ));
         }
 
-        // TODO: Check to see if the set of registered keys is empty
-
         if key.is_empty() {
             return Err(errors::Error::General(
                 "Cannot unsubscribe to an empty key string.",
@@ -383,17 +446,58 @@ impl AsyncClient {
             ));
         }
 
+        // If the key contains a wildcard character, check if we subscribed
+        // to the key. If not, we are done.
+        if !Self::is_wildcard(key)
+            && !self.subscribed_keys.contains(key)
+            && !self.wildcard_subscribed_keys.contains_key(key)
+        {
+            log::info!(
+                "Cannot unsubscribe to {} from {} because we never subscribed to it.",
+                key,
+                app_pattern
+            );
+            return Ok(());
+        }
+
+        let apps_option = self.wildcard_subscribed_keys.get_mut(key);
+        if let Some(apps) = apps_option {
+            if app_pattern.ne("*") && apps.contains(app_pattern) {
+                log::info!(
+                    "Cannot unsubscribe to {} from {} because we never subscribed to it. Could not find app_pattern",
+                    key,
+                    app_pattern
+                );
+                return Ok(());
+            }
+        } else {
+            log::info!(
+                "Cannot unsubscribe to {} from {} because we never subscribed to it. Could not find key.",
+                key,
+                app_pattern
+            );
+            return Ok(());
+        }
+
         let string_value = format!(
             "AppPattern={},VarPattern={},Interval={}",
             app_pattern, key, 0.0
         );
 
-        let mut message = Message::wildcard_unregister(self.get_name(), string_value.as_str());
+        // TODO: If the app_pattern is a wildcard, we should unsubscribe to all.
+        // That may mean we need to send multiple messages. E.G. for app_a and for app_b.
+
+        let message = Message::wildcard_unregister(self.get_name(), string_value.as_str());
 
         let result = self.send_message(message);
 
         if let Ok(()) = result {
-            // TODO: Need to remove the variable being registered.
+            if let Some(apps) = self.wildcard_subscribed_keys.get_mut(key) {
+                apps.remove(app_pattern);
+                if apps.is_empty() {
+                    self.wildcard_subscribed_keys.remove(key);
+                }
+            }
         }
 
         return result;
@@ -608,28 +712,44 @@ impl AsyncClient {
 
 impl Publish<f64> for AsyncClient {
     fn publish(&mut self, key: &str, value: f64) -> errors::Result<()> {
-        let mut message = Message::notify_double(key, value, crate::time_warped());
-        return self.send_message(message);
+        let message = Message::notify_double(key, value, crate::time_warped());
+        let result = self.send_message(message);
+        if let Ok(()) = result {
+            self.published_keys.insert(key.to_string());
+        }
+        return result;
     }
 }
 
 impl Publish<&Vec<u8>> for AsyncClient {
     fn publish(&mut self, key: &str, value: &Vec<u8>) -> errors::Result<()> {
         let message = Message::notify_data(key, value, crate::time_warped());
-        return self.send_message(message);
+        let result = self.send_message(message);
+        if let Ok(()) = result {
+            self.published_keys.insert(key.to_string());
+        }
+        return result;
     }
 }
 
 impl Publish<String> for AsyncClient {
     fn publish(&mut self, key: &str, value: String) -> errors::Result<()> {
         let message = Message::notify_string(key, value, crate::time_warped());
-        return self.send_message(message);
+        let result = self.send_message(message);
+        if let Ok(()) = result {
+            self.published_keys.insert(key.to_string());
+        }
+        return result;
     }
 }
 
 impl Publish<&str> for AsyncClient {
     fn publish(&mut self, key: &str, value: &str) -> errors::Result<()> {
         let message = Message::notify_string(key, value, crate::time_warped());
-        return self.send_message(message);
+        let result = self.send_message(message);
+        if let Ok(()) = result {
+            self.published_keys.insert(key.to_string());
+        }
+        return result;
     }
 }
