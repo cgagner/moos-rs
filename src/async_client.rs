@@ -9,6 +9,7 @@ use crate::{
 use crate::{time_local, time_unwarped, time_warped};
 
 use log::{debug, error, info, trace, warn};
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -25,7 +26,7 @@ use tokio::{
 };
 
 type Inbox = Arc<Mutex<Option<std::sync::mpsc::Sender<Message>>>>;
-
+pub type WildcardMap = HashMap<String, HashSet<String>>;
 pub struct AsyncClient {
     stream: Option<TcpStream>,
     write_buffer: Vec<u8>,
@@ -42,7 +43,7 @@ pub struct AsyncClient {
     on_disconnect_callback: Option<fn()>,
     published_keys: HashSet<String>,
     subscribed_keys: HashSet<String>,
-    wildcard_subscribed_keys: HashMap<String, HashSet<String>>,
+    wildcard_subscribed_keys: WildcardMap,
 }
 
 pub trait Publish<D> {
@@ -109,10 +110,21 @@ impl AsyncClient {
         return &self.subscribed_keys;
     }
 
+    /// Get the map of wildcard subscriptions
+    /// Returns: Borrow of the [`WildcardMap`] of wildcard subscriptions
+    pub fn get_wildcard_subscribed_keys(&self) -> &WildcardMap {
+        return &self.wildcard_subscribed_keys;
+    }
+
     /// Check if the specified key is in the list of being subscribed to by
     /// the client.
     pub fn is_subscribed_to(&self, key: &str) -> bool {
         self.subscribed_keys.contains(key)
+            || self.wildcard_subscribed_keys.contains_key(key)
+            || self
+                .wildcard_subscribed_keys
+                .keys()
+                .any(|pattern| Self::is_wildcard_match(pattern, key))
     }
 
     pub fn is_time_correction_enabled(&self) -> bool {
@@ -241,8 +253,30 @@ impl AsyncClient {
     }
 
     /// Check if a key contains wildcards.
-    fn is_wildcard(key: &str) -> bool {
+    pub(crate) fn is_wildcard(key: &str) -> bool {
         key.contains("*") || key.contains("?")
+    }
+
+    /// Check if a pattern matches a key.
+    ///
+    /// Arguments:
+    ///
+    /// `key_pattern`: pattern to check. The pattern should
+    ///                match the MOOS wildcard characters.
+    /// `test_key`: key to test
+    ///
+    /// Returns: true if the pattern matches the key.
+    pub(crate) fn is_wildcard_match(key_pattern: &str, test_key: &str) -> bool {
+        if let Ok(re) = Regex::new(
+            format!("^{}$", key_pattern)
+                .replace("*", ".*")
+                .replace("?", ".?")
+                .as_str(),
+        ) {
+            re.is_match(test_key)
+        } else {
+            false
+        }
     }
 
     /// Subscribe to messages with the specified key at the specified interval.
@@ -462,7 +496,7 @@ impl AsyncClient {
 
         let apps_option = self.wildcard_subscribed_keys.get_mut(key);
         if let Some(apps) = apps_option {
-            if app_pattern.ne("*") && apps.contains(app_pattern) {
+            if app_pattern.ne("*") && !apps.contains(app_pattern) {
                 log::info!(
                     "Cannot unsubscribe to {} from {} because we never subscribed to it. Could not find app_pattern",
                     key,
@@ -751,5 +785,33 @@ impl Publish<&str> for AsyncClient {
             self.published_keys.insert(key.to_string());
         }
         return result;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::async_client::AsyncClient;
+    #[test]
+    fn test_wildcard_match() {
+        assert!(AsyncClient::is_wildcard_match("NAV_*", "NAV_X"));
+        assert!(AsyncClient::is_wildcard_match("NAV_*", "NAV_"));
+        assert!(AsyncClient::is_wildcard_match("NAV_*", "NAV_*"));
+        assert!(AsyncClient::is_wildcard_match("NAV_*", "NAV_?"));
+        assert!(AsyncClient::is_wildcard_match("NAV_*", "NAV_DEPTH"));
+        assert!(!AsyncClient::is_wildcard_match("NAV_*", "ANAV_X"));
+        assert!(!AsyncClient::is_wildcard_match("NAV_*", "ASDF"));
+        assert!(AsyncClient::is_wildcard_match("NAV_*_TEST", "NAV__TEST"));
+        assert!(AsyncClient::is_wildcard_match(
+            "NAV_*_TEST",
+            "NAV_GOOD_TEST"
+        ));
+        assert!(!AsyncClient::is_wildcard_match("NAV_*_TEST", "NAV_X"));
+
+        assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_X"));
+        assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_"));
+        assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_*"));
+        assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_?"));
+        assert!(!AsyncClient::is_wildcard_match("NAV_?", "NAV_DEPTH"));
+        assert!(!AsyncClient::is_wildcard_match("NAV_?", "ASDF"));
     }
 }

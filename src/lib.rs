@@ -85,8 +85,9 @@ fn get_safe_time_skew() -> Arc<RwLock<f64>> {
 #[cfg(test)]
 mod tests {
     use crate::async_client::AsyncClient;
+    use std::cmp::Ordering;
     use std::process::{Child, Command};
-    use std::{cmp::Ordering, str::from_utf8};
+    use std::sync::atomic::AtomicU16;
 
     #[test]
     fn it_works() {
@@ -120,19 +121,32 @@ mod tests {
         // in the global setting update
         let child = thread::spawn(move || set_time_warp(2.0));
 
-        let res = child.join();
+        child
+            .join()
+            .expect("Failed to child child thread in test_set_time_warp");
 
         println!("TimeWarp: {}", get_time_warp());
         assert!((get_time_warp() - 2.0).abs() < 1e-9);
     }
 
+    /// AtomicU16 to use to create a new port for each test since the
+    /// tests run in parallel.
+    static PORT: AtomicU16 = AtomicU16::new(9700);
+
+    /// Get a new port number for connecting to the MOOSDB
+    fn get_new_port() -> u16 {
+        PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Helper Structure that will start the MOOSDB on creation and will kill
+    /// the MOOSDB when dropped. This works even if there is a panic!
     struct MoosDBController {
         child: Child,
     }
 
     impl MoosDBController {
         pub fn new(port: u16) -> Self {
-            let mut child = Command::new("MOOSDB")
+            let child = Command::new("MOOSDB")
                 .arg(format!("--moos_port={}", port))
                 .spawn()
                 .expect(
@@ -158,84 +172,137 @@ mod tests {
         }
     }
 
-    async fn setup_moosdb(port: u16) -> Option<(AsyncClient, MoosDBController)> {
+    fn setup_moosdb(port: u16) -> Option<MoosDBController> {
         // **NOTE:** Don't use catch_unwind in a real application. We're only
         // using it here so the tests won't fail if the MOOSDB can't be found.
         // Hopefully, this will go away when we figure out how to add the MOOSDB
         // to the GitHub Actions.
-        let child = if let Ok(child) = std::panic::catch_unwind(|| MoosDBController::new(port)) {
-            child
+        if let Ok(child) = std::panic::catch_unwind(|| MoosDBController::new(port)) {
+            return Some(child);
         } else {
             return None;
         };
+    }
 
-        let mut client = AsyncClient::new("int_test_subscribe");
+    async fn setup_client(port: u16, name: &str) -> AsyncClient {
+        let mut client = AsyncClient::new(name);
 
         // TODO: Need to separate out the connect method from the connect loop. Setting
         // this to an invalid port should return after some timeout.
         if let Err(e) = client.connect_to("localhost", port).await {
+            eprintln!("Received an error during setup_client: {:?}", e);
             assert!(false);
         }
-
-        Some((client, child))
+        client
     }
 
     #[tokio::test]
     async fn int_test_subscibe() {
-        let (mut client, mut child) = if let Some((client, child)) = setup_moosdb(9999_u16).await {
-            (client, child)
+        let port = get_new_port();
+        let mut child = if let Some(child) = setup_moosdb(port) {
+            child
         } else {
             return;
         };
+        assert!(child.is_running());
+
+        let client_name = "int_test_subscribe";
+        let key1 = "NAV_X";
+        let key2 = "NAV_Y";
+
+        let mut client = setup_client(port, client_name).await;
 
         client
-            .subscribe("NAV_Y", 0.0)
-            .expect("Failed to subscibe to NAV_Y");
+            .subscribe(key2, 0.0)
+            .expect(format!("Failed to subscibe to {}", key2).as_str());
 
-        assert!(client.get_subscribed_keys().contains("NAV_Y"));
-        assert!(client.is_subscribed_to("NAV_Y"));
+        assert!(client.get_subscribed_keys().contains(key2));
+        assert!(client.is_subscribed_to(key2));
         // This should fail since we haven't subscribed to it yet.
-        assert!(!client.get_subscribed_keys().contains("NAV_X"));
-        assert!(!client.is_subscribed_to("NAV_X"));
+        assert!(!client.get_subscribed_keys().contains(key1));
+        assert!(!client.is_subscribed_to(key1));
 
         client
-            .subscribe("NAV_X", 0.0)
-            .expect("Failed to subscibe to NAV_X");
+            .subscribe(key1, 0.0)
+            .expect(format!("Failed to subscibe to {}", key1).as_str());
 
-        assert!(client.get_subscribed_keys().contains("NAV_Y"));
-        assert!(client.is_subscribed_to("NAV_Y"));
-        assert!(client.get_subscribed_keys().contains("NAV_X"));
-        assert!(client.is_subscribed_to("NAV_X"));
+        assert!(client.get_subscribed_keys().contains(key2));
+        assert!(client.is_subscribed_to(key2));
+        assert!(client.get_subscribed_keys().contains(key1));
+        assert!(client.is_subscribed_to(key1));
 
         // Unsubscribe
         client
-            .unsubscribe("NAV_Y")
-            .expect("Failed to unsubscribe to NAV_Y");
+            .unsubscribe(key2)
+            .expect(format!("Failed to unsubscibe to {}", key2).as_str());
 
-        assert!(!client.get_subscribed_keys().contains("NAV_Y"));
-        assert!(!client.is_subscribed_to("NAV_Y"));
-        assert!(client.get_subscribed_keys().contains("NAV_X"));
-        assert!(client.is_subscribed_to("NAV_X"));
+        assert!(!client.get_subscribed_keys().contains(key2));
+        assert!(!client.is_subscribed_to(key2));
+        assert!(client.get_subscribed_keys().contains(key1));
+        assert!(client.is_subscribed_to(key1));
 
         client
-            .unsubscribe("NAV_X")
-            .expect("Failed to unsubscribe to NAV_X");
+            .unsubscribe(key1)
+            .expect(format!("Failed to unsubscibe to {}", key1).as_str());
 
-        assert!(!client.get_subscribed_keys().contains("NAV_Y"));
-        assert!(!client.is_subscribed_to("NAV_Y"));
-        assert!(!client.get_subscribed_keys().contains("NAV_X"));
-        assert!(!client.is_subscribed_to("NAV_X"));
+        assert!(!client.get_subscribed_keys().contains(key2));
+        assert!(!client.is_subscribed_to(key2));
+        assert!(!client.get_subscribed_keys().contains(key1));
+        assert!(!client.is_subscribed_to(key1));
     }
 
     #[tokio::test]
     async fn int_test_subscibe_from() {
-        let (mut client, mut child) = if let Some((client, child)) = setup_moosdb(9998_u16).await {
-            (client, child)
+        let port = get_new_port();
+        let mut child = if let Some(child) = setup_moosdb(port) {
+            child
         } else {
             return;
         };
 
-        // TODO: Setup test.
-        assert!(true);
+        assert!(child.is_running());
+
+        let client_name = "int_test_subscribe_from";
+        let key1 = "NAV_X";
+        let key2 = "NAV_*";
+
+        let mut client = setup_client(port, client_name).await;
+
+        assert!(!client.is_subscribed_to(key1));
+        assert!(!client.is_subscribed_to(key2));
+
+        client
+            .subscribe_from(key1, client_name, 0.0)
+            .expect(format!("Failed to {} subscribe_from {}", key1, client_name).as_str());
+
+        assert!(client.is_subscribed_to(key1));
+        assert!(!client.is_subscribed_to(key2));
+
+        client
+            .subscribe_from(key2, client_name, 0.0)
+            .expect(format!("Failed to {} subscribe_from {}", key2, client_name).as_str());
+
+        assert!(client.is_subscribed_to(key1));
+        assert!(client.is_subscribed_to(key2));
+
+        client
+            .unsubscribe_from(key1, client_name)
+            .expect(format!("Failed to {} unsubscribe_from {}", key1, client_name).as_str());
+
+        // Key2 is a wildcard. We should still be subscribed to key1
+        assert!(!client.get_wildcard_subscribed_keys().contains_key(key1));
+        assert!(client.is_subscribed_to(key1));
+        assert!(client.get_wildcard_subscribed_keys().contains_key(key2));
+        assert!(client.is_subscribed_to(key2));
+
+        client
+            .unsubscribe_from(key2, client_name)
+            .expect(format!("Failed to {} unsubscribe_from {}", key2, client_name).as_str());
+
+        // Key2 is a wildcard. We should still be subscribed to key1
+        assert!(!client.get_wildcard_subscribed_keys().contains_key(key1));
+        assert!(!client.is_subscribed_to(key1));
+        assert!(!client.get_wildcard_subscribed_keys().contains_key(key2));
+        assert!(!client.is_subscribed_to(key2));
     }
 }
