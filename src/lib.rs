@@ -126,20 +126,6 @@ mod tests {
         assert!((get_time_warp() - 2.0).abs() < 1e-9);
     }
 
-    async fn setup_moosdb(port: u16) -> Option<(AsyncClient, MoosDBController)> {
-        let child = MoosDBController::new(port);
-
-        let mut client = AsyncClient::new("int_test_subscribe");
-
-        // TODO: Need to separate out the connect method from the connect loop. Setting
-        // this to an invalid port should return after some timeout.
-        if let Err(e) = client.connect_to("localhost", port).await {
-            assert!(false);
-        }
-
-        Some((client, child))
-    }
-
     struct MoosDBController {
         child: Child,
     }
@@ -170,6 +156,28 @@ mod tests {
         fn drop(&mut self) {
             self.child.kill().expect("Failed to kill MOOSDB");
         }
+    }
+
+    async fn setup_moosdb(port: u16) -> Option<(AsyncClient, MoosDBController)> {
+        // **NOTE:** Don't use catch_unwind in a real application. We're only
+        // using it here so the tests won't fail if the MOOSDB can't be found.
+        // Hopefully, this will go away when we figure out how to add the MOOSDB
+        // to the GitHub Actions.
+        let child = if let Ok(child) = std::panic::catch_unwind(|| MoosDBController::new(port)) {
+            child
+        } else {
+            return None;
+        };
+
+        let mut client = AsyncClient::new("int_test_subscribe");
+
+        // TODO: Need to separate out the connect method from the connect loop. Setting
+        // this to an invalid port should return after some timeout.
+        if let Err(e) = client.connect_to("localhost", port).await {
+            assert!(false);
+        }
+
+        Some((client, child))
     }
 
     #[tokio::test]

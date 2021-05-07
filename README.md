@@ -61,6 +61,12 @@ cargo run -- --moos_name=umm-1
 cargo run -- --moos_name=umm-2 -s=TEST_12
 ```
 
+# Notes
+
+1. This project requires at least Rust 1.52. This is because of the addition 
+   of the [str::split_once](https://doc.rust-lang.org/stable/std/primitive.str.html#method.split_once) 
+   method, which is the Rust version of `MOOSChomp` from the original C++ 
+   library.
 
 # Credits
 

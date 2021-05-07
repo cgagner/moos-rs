@@ -9,6 +9,7 @@ license = "Apache-2.0"
 homepage = "https://github.com/cgagner/moos-rs" # placeholder
 repository = "https://github.com/cgagner/moos-rs" # placeholder
 categories = ["network-programming", "science::robotics"]
+rust-version = "1.52"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
