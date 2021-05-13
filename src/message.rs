@@ -2,11 +2,11 @@
 //
 
 use super::errors;
-use crate::errors::{InsufficientSpaceError, Result};
-use crate::{time_local, time_unwarped, time_warped};
+use crate::errors::InsufficientSpaceError;
+use crate::{time_local, time_warped};
 use core::convert::TryInto;
 use core::mem;
-use std::{collections::btree_map::Values, fmt, fmt::Display, io::Error, str::from_utf8};
+use std::{fmt, fmt::Display};
 
 pub const PROTOCOL_CONNECT_MESSAGE: &str = "ELKS CAN'T DANCE 2/8/10\0\0\0\0\0\0\0\0\0";
 pub const ASYNCHRONOUS: &str = "asynchronous";
@@ -411,7 +411,6 @@ impl Display for Message {
             ValueType::Double(d) => write!(f, ",value: {}", d)?,
             ValueType::String(s) => write!(f, ",value: {}", s)?,
             ValueType::Binary(b) => write!(f, ",value: {:?}", b)?,
-            _ => write!(f, ",value: null")?,
         };
         write!(f, ")")
     }
@@ -441,7 +440,7 @@ pub fn decode_slice(buffer: &[u8]) -> errors::Result<(MessageList, usize)> {
     let mut bytes_read = reader.bytes_read;
     drop(reader);
     let mut msg_list = MessageList::new();
-    for i in 0..expected_messages {
+    for _ in 0..expected_messages {
         let (msg, message_size) = Message::decode_slice(&buffer[bytes_read..])?;
         bytes_read += message_size;
         msg_list.push(msg);
@@ -691,36 +690,11 @@ impl<'a> Writer<'a> {
     }
 }
 
-struct Packet {}
-
-impl Packet {
-    pub fn encode(message_list: MessageList) -> errors::Result<bool> {
-        let buffer_size: i32 = message_list.iter().map(|message| message.get_size()).sum();
-
-        let mut num_messages: u32 = 0;
-        let mut byte_count: u32 = 0;
-        let mut offset: u32 = 0;
-        for message in message_list.iter() {
-            num_messages += 1;
-            // let num_bytes = match message.serialize() {
-            //     Ok(b) => b,
-            //     Err(e) => {
-            //         println!("Packet::encode(): failed to encode");
-            //         return Err(Error::SerializationFailure);
-            //     }
-            // };
-        }
-
-        Ok(true)
-    }
-}
-
 // ---------------------------------------------------------------------------
 //  Tests
 
 #[cfg(test)]
 mod tests {
-    use log::debug;
 
     use crate::errors::*;
     use crate::message::Reader;
@@ -819,7 +793,7 @@ mod tests {
 
         assert_eq!(writer.bytes_written, 4);
         // This should fail
-        if let Ok(i) = writer.write_i8(-1) {
+        if let Ok(_) = writer.write_i8(-1) {
             assert!(false);
         } else {
             assert!(true);
@@ -839,7 +813,7 @@ mod tests {
         assert_eq!(writer.write_i32(-123145).unwrap(), 4);
         assert_eq!(writer.bytes_written, 8);
 
-        if let Ok(i) = writer.write_i32(134) {
+        if let Ok(_) = writer.write_i32(134) {
             assert!(false);
         } else {
             assert!(true);
@@ -857,7 +831,7 @@ mod tests {
         assert_eq!(writer.write_f64(2911204.1231).unwrap(), 8);
         assert_eq!(writer.bytes_written, 16);
 
-        if let Ok(i) = writer.write_f64(98723.2342) {
+        if let Ok(_) = writer.write_f64(98723.2342) {
             assert!(false);
         } else {
             assert!(true);
@@ -878,7 +852,7 @@ mod tests {
         let mut writer = Writer::new(&mut buffer);
         let s = String::from("asdf💖");
         assert_eq!(writer.write_string(&s).unwrap(), 12);
-        if let Ok(i) = writer.write_string("this should fail") {
+        if let Ok(_) = writer.write_string("this should fail") {
             assert!(false);
         } else {
             assert!(true);
@@ -897,7 +871,7 @@ mod tests {
         let v: Vec<u8> = vec![97, 115, 100, 102, 240, 159, 146, 150];
 
         assert_eq!(writer.write_vector(&v).unwrap(), 12);
-        if let Ok(i) = writer.write_vector(&v) {
+        if let Ok(_) = writer.write_vector(&v) {
             assert!(false);
         } else {
             assert!(true);
@@ -911,7 +885,7 @@ mod tests {
 
     #[test]
     fn test_message() {
-        let mut m: Message = Message::from_string("DEPLOY", "true");
+        let m: Message = Message::from_string("DEPLOY", "true");
         assert_eq!(m.key(), "DEPLOY");
 
         println!("Key: {}", m.key());

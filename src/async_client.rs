@@ -806,6 +806,7 @@ mod tests {
             "NAV_GOOD_TEST"
         ));
         assert!(!AsyncClient::is_wildcard_match("NAV_*_TEST", "NAV_X"));
+        assert!(AsyncClient::is_wildcard_match("*V_X", "NAV_X"));
 
         assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_X"));
         assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_"));
@@ -813,5 +814,10 @@ mod tests {
         assert!(AsyncClient::is_wildcard_match("NAV_?", "NAV_?"));
         assert!(!AsyncClient::is_wildcard_match("NAV_?", "NAV_DEPTH"));
         assert!(!AsyncClient::is_wildcard_match("NAV_?", "ASDF"));
+        assert!(AsyncClient::is_wildcard_match("N?V_X", "NAV_X"));
+        assert!(AsyncClient::is_wildcard_match("N?V_X", "NOV_X"));
+        assert!(!AsyncClient::is_wildcard_match("N?V_X", "NOOV_X"));
+        assert!(!AsyncClient::is_wildcard_match("TEST", "ASDF"));
+        assert!(!AsyncClient::is_wildcard_match("NOOV_X", "NAV_X"));
     }
 }
