@@ -153,26 +153,6 @@ impl Message {
         }
     }
 
-    /// Create a new message
-    pub(crate) fn new<S>(message_type: MessageType, key: S) -> Self
-    where
-        S: Into<String>,
-    {
-        Message {
-            id: 0,                      //
-            message_type: message_type, //
-            data_type: DataType::Double,
-            double_value: 0.0,
-            double_value2: 0.0,
-            data: Data::Binary(Vec::new()),
-            time: 0.0,
-            key: key.into(),
-            source: String::new(),
-            source_aux: String::new(),
-            originating_community: String::new(),
-        }
-    }
-
     pub(crate) fn notify_double(key: &str, value: f64, time: f64) -> Self {
         Message {
             id: 0,                             //
