@@ -1,32 +1,23 @@
-use crate::{
-    errors,
-    message::{DataType, PROTOCOL_CONNECT_MESSAGE},
-};
-use crate::{
-    errors::Result,
-    message::{Data, Message, MessageType, ValueType},
-};
-use crate::{time_local, time_unwarped, time_warped};
+use crate::errors;
+use crate::message::{Data, Message, MessageType};
+use crate::time_warped;
 
-use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{
-    net::{Shutdown, SocketAddr},
-    ops::DerefMut,
-};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::tcp::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf},
     net::TcpStream,
     sync::{mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender},
-    time::sleep,
 };
 
 type Inbox = Arc<Mutex<Option<std::sync::mpsc::Sender<Message>>>>;
 pub type WildcardMap = HashMap<String, HashSet<String>>;
+
+const HEARTBEAT_TIMEOUT: u64 = 1000;
+
 pub struct AsyncClient {
     stream: Option<TcpStream>,
     write_buffer: Vec<u8>,
@@ -128,7 +119,7 @@ impl AsyncClient {
     }
 
     pub fn is_time_correction_enabled(&self) -> bool {
-        /// TODO
+        // TODO: Need to handle setting this value
         return true;
     }
 
@@ -188,7 +179,7 @@ impl AsyncClient {
 
         let mut result = TcpStream::connect(addr.clone()).await;
         while let Err(_) = result {
-            trace!(
+            log::trace!(
                 "AsyncClient failed to connect to {} after {} attempts.",
                 addr,
                 attempt
@@ -200,7 +191,7 @@ impl AsyncClient {
 
         let mut stream = match result {
             Ok(stream) => stream,
-            Err(e) => {
+            Err(_) => {
                 let _ = self.disconnect().await;
                 return Err(errors::Error::General(
                     "AsyncClient somehow got an invalid stream while connecting.",
@@ -219,7 +210,7 @@ impl AsyncClient {
             on_connect();
         }
 
-        let (mut reader, mut writer) = tokio::io::split(stream);
+        let (reader, writer) = tokio::io::split(stream);
 
         let (outbox, rx) = mpsc::unbounded_channel::<Message>();
 
@@ -614,15 +605,15 @@ impl AsyncClient {
         let len = crate::message::encode_slice(&msg, &mut self.write_buffer)?;
 
         let result = stream.write(&mut self.write_buffer[0..len]).await;
-        trace!("wrote to stream; success={:?}", result);
-        trace!("Wrote: {:x?}", &self.write_buffer[0..len]);
+        log::trace!("wrote to stream; success={:?}", result);
+        log::trace!("Wrote: {:x?}", &self.write_buffer[0..len]);
 
         let result = stream.read(&mut self.read_buffer).await;
 
         if let Ok(size) = result {
-            trace!("Read: {}", size);
+            log::trace!("Read: {}", size);
         } else {
-            trace!("Error: {:?} ", result);
+            log::trace!("Error: {:?} ", result);
         }
 
         let (msg_list, _) = if let Ok(_) = result {
@@ -663,7 +654,7 @@ impl AsyncClient {
         // TODO: Need to set the size from a configuration
         let mut read_buffer = vec![0; 200000];
         loop {
-            trace!("read_loop");
+            log::trace!("read_loop");
 
             let result = reader.read(&mut read_buffer).await;
 
@@ -683,7 +674,7 @@ impl AsyncClient {
                 return Err(errors::Error::General("Failed to decode message."));
             };
 
-            trace!("Received {} messages.", msg_list.len());
+            log::trace!("Received {} messages.", msg_list.len());
 
             // TODO: We probably should only lock the inbox if we receive notify messages
 
@@ -691,8 +682,9 @@ impl AsyncClient {
                 if let Some(tx) = i.deref_mut() {
                     for message in msg_list {
                         if message.is_notify() {
+                            log::trace!("Received notify message: {}", message.key());
                             if let Err(e) = tx.send(message) {
-                                error!("Failed to put message into the inbox: {}", e);
+                                log::error!("Failed to put message into the inbox: {}", e);
                                 i.take();
                                 break;
                             }
@@ -700,7 +692,7 @@ impl AsyncClient {
                     }
                 } else {
                     // TODO: Should we continue to print a warning?
-                    warn!("AsyncClient is receiving messages, but no one is consuming them.");
+                    log::warn!("AsyncClient is receiving messages, but no one is consuming them.");
                 }
             }
         }
@@ -715,13 +707,15 @@ impl AsyncClient {
         let mut write_buffer = vec![0; 200000];
         loop {
             let message = if let Ok(msg) =
-                tokio::time::timeout(Duration::from_millis(1000), outbox.recv()).await
+                tokio::time::timeout(Duration::from_millis(HEARTBEAT_TIMEOUT), outbox.recv()).await
             {
                 msg
                 // TODO: Check to see if we've sent at timeine message recently
             } else {
                 // We haven't sent a message in a second. Send a heartbeat
-                trace!("AsyncClient hasn't sent a message in over a second. Sending a heartbeat.");
+                log::trace!(
+                    "AsyncClient hasn't sent a message in over a second. Sending a heartbeat."
+                );
                 Some(Message::timing(client_name.as_str()))
             };
             if let Some(message) = message {
@@ -729,9 +723,9 @@ impl AsyncClient {
                 let len = crate::message::encode_slice(&message, &mut write_buffer).unwrap();
                 let result = writer.write(&mut write_buffer[0..len]).await;
                 if let Err(e) = result {
-                    error!("Failed to write a message: {}", e);
+                    log::error!("Failed to write a message: {}", e);
                     if let Err(ee) = writer.shutdown().await {
-                        error!(
+                        log::error!(
                             "Failed to shutdown client after failing to send.. Double fail: {}",
                             ee
                         );

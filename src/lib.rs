@@ -84,10 +84,18 @@ fn get_safe_time_skew() -> Arc<RwLock<f64>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::async_client::AsyncClient;
-    use std::cmp::Ordering;
-    use std::process::{Child, Command};
+    use simple_logger::SimpleLogger;
+
+    use crate::{
+        async_client::{AsyncClient, Publish},
+        message::{Message, ValueType},
+    };
     use std::sync::atomic::AtomicU16;
+    use std::{cmp::Ordering, time::Duration};
+    use std::{
+        process::{Child, Command},
+        sync::mpsc::Receiver,
+    };
 
     #[test]
     fn it_works() {
@@ -184,20 +192,22 @@ mod tests {
         };
     }
 
-    async fn setup_client(port: u16, name: &str) -> AsyncClient {
+    async fn setup_client(port: u16, name: &str) -> (AsyncClient, Receiver<Message>) {
         let mut client = AsyncClient::new(name);
 
+        let receiver = client.start_consuming();
         // TODO: Need to separate out the connect method from the connect loop. Setting
         // this to an invalid port should return after some timeout.
         if let Err(e) = client.connect_to("localhost", port).await {
             eprintln!("Received an error during setup_client: {:?}", e);
             assert!(false);
         }
-        client
+        (client, receiver)
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn int_test_subscibe() {
+        let _ = SimpleLogger::new().init();
         let port = get_new_port();
         let mut child = if let Some(child) = setup_moosdb(port) {
             child
@@ -210,7 +220,7 @@ mod tests {
         let key1 = "NAV_X";
         let key2 = "NAV_Y";
 
-        let mut client = setup_client(port, client_name).await;
+        let (mut client, receiver) = setup_client(port, client_name).await;
 
         client
             .subscribe(key2, 0.0)
@@ -251,8 +261,9 @@ mod tests {
         assert!(!client.is_subscribed_to(key1));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn int_test_subscibe_from() {
+        let _ = SimpleLogger::new().init();
         let port = get_new_port();
         let mut child = if let Some(child) = setup_moosdb(port) {
             child
@@ -266,7 +277,7 @@ mod tests {
         let key1 = "NAV_X";
         let key2 = "NAV_*";
 
-        let mut client = setup_client(port, client_name).await;
+        let (mut client, receiver) = setup_client(port, client_name).await;
 
         assert!(!client.is_subscribed_to(key1));
         assert!(!client.is_subscribed_to(key2));
@@ -304,5 +315,43 @@ mod tests {
         assert!(!client.is_subscribed_to(key1));
         assert!(!client.get_wildcard_subscribed_keys().contains_key(key2));
         assert!(!client.is_subscribed_to(key2));
+
+        let publisher_name = "test_publisher";
+
+        client
+            .subscribe_from(key1, publisher_name, 0.0)
+            .expect(format!("Failed to {} subscribe_from {}", key1, publisher_name).as_str());
+
+        assert!(client.get_wildcard_subscribed_keys().contains_key(key1));
+        assert!(client.is_subscribed_to(key1));
+
+        let (mut client2, _) = setup_client(port, publisher_name).await;
+        let test_value = 1234.4321;
+        client2
+            .publish(key1, test_value)
+            .expect(format!("Failed to publish {} from {}", key1, publisher_name).as_str());
+
+        if let Ok(message) = receiver.recv_timeout(Duration::from_secs(1)) {
+            assert!(message.is_notify());
+            assert!(message.key() == key1);
+            assert!(message.source() == publisher_name);
+            match message.value() {
+                ValueType::Double(d) => assert!((d - test_value).abs() < 0.001),
+                _ => assert!(false),
+            };
+        } else {
+            assert!(false);
+        }
+
+        // TODO: Add test publish from a different client and verify we don't get it.
+
+        client2
+            .disconnect()
+            .await
+            .expect(format!("Failed to disconnect {}", client2.get_name()).as_str());
+        client
+            .disconnect()
+            .await
+            .expect(format!("Failed to disconnect {}", client.get_name()).as_str());
     }
 }

@@ -2,7 +2,7 @@
 //
 
 use super::errors;
-use crate::errors::InsufficientSpaceError;
+use crate::errors::INSUFFICIENT_SPACE_ERROR;
 use crate::{time_local, time_warped};
 use core::convert::TryInto;
 use core::mem;
@@ -290,7 +290,7 @@ impl Message {
 
         let length = reader.read_i32()? as usize;
         if buffer.len() + core::mem::size_of::<i32>() < length {
-            return Err(errors::InsufficientSpaceError);
+            return Err(errors::INSUFFICIENT_SPACE_ERROR);
         }
 
         let id = reader.read_i32()?;
@@ -336,7 +336,7 @@ impl Message {
         let len = self.get_size();
         // Check that the buffer has enough size to store the message
         if buffer.len() < (len as usize) {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let mut writer = Writer::new(buffer);
 
@@ -411,7 +411,7 @@ pub fn decode_slice(buffer: &[u8]) -> errors::Result<(MessageList, usize)> {
     let mut reader = Reader::new(buffer);
     let total_bytes = reader.read_i32()?;
     if buffer.len() < total_bytes as usize {
-        return Err(errors::InsufficientSpaceError);
+        return Err(errors::INSUFFICIENT_SPACE_ERROR);
     }
 
     let expected_messages = reader.read_i32()?;
@@ -547,7 +547,7 @@ impl<'a> Reader<'a> {
 
     fn read_i8(&mut self) -> errors::Result<i8> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<i8>() {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let value = self.buffer[self.bytes_read] as i8;
         self.bytes_read += core::mem::size_of::<i8>();
@@ -556,7 +556,7 @@ impl<'a> Reader<'a> {
 
     fn read_i32(&mut self) -> errors::Result<i32> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<i32>() {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let buf: &[u8; core::mem::size_of::<i32>()] = match self.buffer
             [self.bytes_read..(self.bytes_read + core::mem::size_of::<i32>())]
@@ -572,7 +572,7 @@ impl<'a> Reader<'a> {
 
     fn read_f64(&mut self) -> errors::Result<f64> {
         if self.buffer.len() - self.bytes_read < core::mem::size_of::<f64>() {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let buf: &[u8; core::mem::size_of::<f64>()] = match self.buffer
             [self.bytes_read..(self.bytes_read + core::mem::size_of::<f64>())]
@@ -589,7 +589,7 @@ impl<'a> Reader<'a> {
     fn read_string(&mut self) -> errors::Result<String> {
         let length = self.read_i32()? as usize;
         if self.buffer.len() - self.bytes_read < length {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let s = match std::str::from_utf8(&self.buffer[self.bytes_read..(self.bytes_read + length)])
         {
@@ -603,7 +603,7 @@ impl<'a> Reader<'a> {
     fn read_vector(&mut self) -> errors::Result<Vec<u8>> {
         let length = self.read_i32()? as usize;
         if self.buffer.len() - self.bytes_read < length {
-            return Err(InsufficientSpaceError);
+            return Err(INSUFFICIENT_SPACE_ERROR);
         }
         let mut v = Vec::new();
         v.extend_from_slice(&self.buffer[self.bytes_read..(self.bytes_read + length)]);
@@ -627,7 +627,7 @@ impl<'a> Writer<'a> {
 
     fn write_i8(&mut self, value: i8) -> errors::Result<usize> {
         if self.bytes_written + core::mem::size_of::<i8>() > self.buffer.len() {
-            return Err(errors::InsufficientSpaceError);
+            return Err(errors::INSUFFICIENT_SPACE_ERROR);
         }
         self.buffer[self.bytes_written] = value as u8;
         self.bytes_written += core::mem::size_of::<i8>();
@@ -636,7 +636,7 @@ impl<'a> Writer<'a> {
 
     fn write_i32(&mut self, value: i32) -> errors::Result<usize> {
         if self.bytes_written + core::mem::size_of::<i32>() > self.buffer.len() {
-            return Err(errors::InsufficientSpaceError);
+            return Err(errors::INSUFFICIENT_SPACE_ERROR);
         }
         self.buffer[self.bytes_written..(self.bytes_written + core::mem::size_of::<i32>())]
             .copy_from_slice(&value.to_le_bytes());
@@ -646,7 +646,7 @@ impl<'a> Writer<'a> {
 
     fn write_f64(&mut self, value: f64) -> errors::Result<usize> {
         if self.bytes_written + core::mem::size_of::<f64>() > self.buffer.len() {
-            return Err(errors::InsufficientSpaceError);
+            return Err(errors::INSUFFICIENT_SPACE_ERROR);
         }
         self.buffer[self.bytes_written..(self.bytes_written + core::mem::size_of::<f64>())]
             .copy_from_slice(&value.to_le_bytes());
@@ -661,7 +661,7 @@ impl<'a> Writer<'a> {
 
     fn write_vector(&mut self, value: &[u8]) -> errors::Result<usize> {
         if self.bytes_written + value.len() + core::mem::size_of::<i32>() > self.buffer.len() {
-            return Err(errors::InsufficientSpaceError);
+            return Err(errors::INSUFFICIENT_SPACE_ERROR);
         }
         self.write_i32(value.len() as i32)?;
         self.buffer[self.bytes_written..(self.bytes_written + value.len())].copy_from_slice(value);

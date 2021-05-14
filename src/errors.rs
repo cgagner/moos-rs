@@ -1,5 +1,4 @@
 use core::array::TryFromSliceError;
-use core::result;
 use std::str::Utf8Error;
 
 #[derive(Debug)]
@@ -18,5 +17,5 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub const InsufficientSpaceError: Error =
+pub const INSUFFICIENT_SPACE_ERROR: Error =
     Error::Serialization(SerializationError::InsufficientSpace());

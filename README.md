@@ -39,6 +39,9 @@ Tasks:
         - [ ] Size of read/write buffers
         - [ ] Delay between reconnect attempts (default to 1)
     - [ ] Add atomic bool or conditional variable to stop the client
+    - [ ] Add setter for is_time_correction_enabled
+    - [ ] Handle the `SKEW_TOLERANCE` in `lib.rs`
+    - [ ] Implement `Drop` for the `AsyncClient`
 - [ ] MOOS Application struct or macro
     - [ ] Parse mission file
     - [ ] Parse arguments
