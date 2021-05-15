@@ -26,6 +26,7 @@ pub struct AsyncClient {
     community: String,
     database_host: String,
     database_port: u16,
+    hostname_seen_by_database: String,
     last_connected_time: f64,
     current_id: i32,
     outbox: Option<UnboundedSender<Message>>,
@@ -59,6 +60,7 @@ impl AsyncClient {
             community: "".into(),
             database_host: "localhost".into(),
             database_port: 9000,
+            hostname_seen_by_database: "".into(),
             last_connected_time: 0.0,
             current_id: 0,
             outbox: None,
@@ -82,9 +84,24 @@ impl AsyncClient {
         }
     }
 
+    /// Get the host where the MOOSDB is running
+    pub fn get_database_host(&self) -> &str {
+        self.database_host.as_str()
+    }
+
+    /// Get the port that the MOOSDB is on
+    pub fn get_database_port(&self) -> u16 {
+        self.database_port
+    }
+
     /// Get the name of the client
     pub fn get_name(&self) -> &str {
         self.name.as_str()
+    }
+
+    /// Get the hostname as seen by the MOOSDB of this client.
+    pub fn get_hostname_seen_by_database(&self) -> &str {
+        self.hostname_seen_by_database.as_str()
     }
 
     /// Get the keys published by the client.
@@ -629,13 +646,29 @@ impl AsyncClient {
             self.community = msg.originating_community().into();
 
             let is_async = match msg.data() {
-                Data::String(s) => s == crate::message::ASYNCHRONOUS,
-                _ => false,
-            };
+                Data::String(s) => s,
+                Data::Binary(b) => std::str::from_utf8(b).unwrap_or(""),
+            }
+            .eq(crate::message::ASYNCHRONOUS);
 
-            // TODO: need to parse hostname=X
-            let my_host_name = msg.source_aux();
-            // store the hostname
+            if !is_async {
+                return Err(errors::Error::General("MOOSDB does not support async."));
+            }
+
+            // TODO: This should be moved into a function
+            // Parse the hostname from the source_aux `hostname=X`
+            for str in msg.source_aux().split(",") {
+                if let Some((key, value)) = str.split_once('=') {
+                    if key.trim().eq("hostname") {
+                        self.hostname_seen_by_database = value.trim().to_string();
+                        log::debug!(
+                            "Client hostname seen by the database: {}",
+                            self.hostname_seen_by_database
+                        );
+                        break;
+                    }
+                }
+            }
 
             let skew = msg.double_value();
             if time_correction_enabled {
