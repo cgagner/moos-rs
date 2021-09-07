@@ -1,3 +1,5 @@
 /target
+/target.bak
+/target.orig
 /Cargo.lock
 /.vscode
