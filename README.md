@@ -47,6 +47,10 @@ Tasks:
     - [ ] Parse arguments
     - [ ] Handle publishing App status (e.g. CPU load)
 - [ ] Example / Tutorial
+- [ ] Templates [cargo-generate](https://github.com/cargo-generate/cargo-generate)
+    - [ ] Make a template for a Rust MOOS Application
+    - [ ] Create a tutorial for using templates
+    
 
 
 

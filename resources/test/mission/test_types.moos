@@ -1,0 +1,32 @@
+// Booleans
+boolean_true0 = true
+boolean_true1 = True
+boolean_true2 = TRUE
+boolean_false0 = false
+boolean_false1 = False
+boolean_false2 = FALSE
+
+// Doubles
+double_pi = 3.14159265
+double_negative = -12.34567
+double_nan = nan
+double_inf = inf
+double_negative_inf = inf
+
+// Strings
+string_test1 = This is a test without quotes
+string_test2 = "This is a test with quotes"
+string_test3 = "String with slashes // in the middle"
+string_test4 = String with slashes // and comment
+
+// Vector
+vector_double_test1 = [4]{0.0,1.1,2.2,3.3} // Comment
+vector_double_test2 = [4x1]{0.0,1.1,2.2,3.3} // Comment
+vector_double_test3 = [2x2]{0.0,1.1,2.2,3.3} // Comment
+
+ProcessConfig = MyApp
+{
+    // TODO: Add more variables
+    debug = false
+    log_dir = "${HOME}/logs" // Environment Variable Test
+}

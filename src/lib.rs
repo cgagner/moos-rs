@@ -1,6 +1,7 @@
 pub mod async_client;
 pub mod errors;
 pub mod message;
+pub mod mission;
 
 use std::sync::{Arc, Once, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};

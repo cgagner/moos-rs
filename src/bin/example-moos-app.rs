@@ -8,16 +8,45 @@ use simple_logger::SimpleLogger;
 use std::error::Error;
 use tokio::join;
 
+use clap::{App, Arg};
+
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
+    let matches = App::new("umm-1")
+        .version("0.1.0")
+        .author("Christopher Gagner")
+        .about("Example moos client application.")
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .value_name("FILE")
+                .help("Sets a custom config file")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("MISSION_FILE")
+                .help("MOOS mission file")
+                .required(false)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("APP_NAME")
+                .help("Application name to be passed to the MOOS DB")
+                .required(false)
+                .index(2),
+        )
+        .get_matches();
+
+    let _mission_name = matches.value_of("MISSION_FILE").unwrap_or("test.moos");
+    let mut client_name: String = matches.value_of("APP_NAME").unwrap_or("umm-1").into();
+
     SimpleLogger::new().init().unwrap();
     // Open a TCP stream to the socket address.
     //
     // Note that this is the Tokio TcpStream, which is fully async.
-
     let args: Vec<String> = env::args().collect();
 
-    let mut client_name: String = "umm-1".into();
     let mut sub_vars = Vec::<String>::new();
     let mut wildcard_sub_vars = Vec::<String>::new();
     for arg in args {
