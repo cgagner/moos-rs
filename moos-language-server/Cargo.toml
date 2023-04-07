@@ -1,0 +1,24 @@
+[package]
+name = "moos_language_server"
+authors =["Christopher Gagner"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+log = "0.4"
+js-sys = "0.3.56"
+lsp-types = "0.92.0"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.4.2"
+wasm-bindgen = "0.2.79"
+moos-parser = {path = "../moos-parser"}
+lalrpop-util = {version = "0.19.6", features = ["lexer"]}
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.26"

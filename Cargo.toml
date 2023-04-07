@@ -1,9 +1,11 @@
-[package]
-name = "moos"
-version = "0.1.0"
-authors = ["cgagner"]
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = [ 
+  "moos",
+  "moos-parser",
+  "moos-language-server",
+]
 
-[dependencies]
+repository = "https://github.com/cgagner/moos-rs"
+license = "Apache-2.0"
+

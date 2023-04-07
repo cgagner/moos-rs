@@ -1,0 +1,225 @@
+use std::str::FromStr;
+use crate::helpers::remove_first_last;
+use crate::lexer::{Location, Token};
+use crate::parser::{MacroDefinition, MacroCondition, MacroType, Line};
+use crate::error::MoosParseError;
+use lalrpop_util::ErrorRecovery;
+
+//grammar<'input>(input: &'input str);
+grammar<'err, 'input>(errors: &'err mut Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>, input: &'input str);
+
+pub Lines: Vec<Line<'input>> = <Line*>;
+
+pub Line: Line<'input> = {
+    Define => <>,
+    MacroDefine => <>,
+    MacroInclude => <>,
+    MacroElse => <>,
+    MacroEndif => <>,
+    BlockBegin => <>,
+    BlockEnd => <>,
+    Assignment => <>,
+    // TODO: Add a catch-all for unknown lines
+    "EOL" => Line::EndOfLine,
+    <comment:"Comment"> => Line::Comment(comment),
+    UnknownMacro => <>,
+    ! => { errors.push(<>); Line::Error },
+    
+}
+
+// ---------------------------------------------------------------------------
+// Basic Lines 
+// ---------------------------------------------------------------------------
+
+BlockBegin: Line<'input> = {
+    "BlockKeyword" "=" <name:"ValueString"> <comment:"Comment"?> <eol:"EOL"?> <l:@L> "{" <r:@R> =>? match eol {
+        //None => Err(lalrpop_util::ParseError::User {
+        //    error: MoosParseError::new_missing_new_line(l, r)
+        //}),
+        None => {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    error: MoosParseError::new_missing_new_line(l, r)
+                },
+                dropped_tokens: vec![]
+            };
+            errors.push(e);
+            Ok(Line::Error)
+        }
+        Some(_) => Ok(Line::BlockBegin(name, comment)),
+    },
+}
+
+BlockEnd: Line<'input> = {
+    "}" <comment:"Comment"?> "EOL" => Line::BlockEnd(comment),
+}
+
+Define: Line<'input> = {
+    <d:"Define"> <name:"Key"> "=" <value:Value> <comment:"Comment"?> "EOL" => Line::Define(name, value, comment),
+}
+
+// TODO: I'm not sure we should be parsing variables like this here...
+// It might be easier to treat everything as a string, and handle variables
+// later. Technically, variables could be anything. E.G.
+// export TEST="TEST=1234"
+Assignment: Line<'input> = {
+    <key:Value*> "=" <value:Value*> <comment:"Comment"?> "EOL" => Line::Assignment(key,value, comment),
+    // <key:"EnvVariable"> "=" <value:Value> <comment:"Comment"?> "EOL" => Line::Assignment(key,value, comment),
+}
+
+// TODO: The original MOOS parser treated everything after the equal sign as
+// the value. It also allowed for anything before the equal to be the key..
+// Should we match the original implementation or write something that
+// applies stricter rules. E.G. keys must be an identifier: [a-zA-Z0-9_-.]+
+Value: crate::parser::Value<'input> = {
+    <value:"bool"> => crate::parser::Value::Boolean(value.0, value.1),
+    <value:"int"> => crate::parser::Value::Integer(value.0, value.1),
+    <value:"float"> => crate::parser::Value::Float(value.0, value.1),
+    <value:"ValueString"> => crate::parser::Value::String(value),
+    <value:"Quote"> => crate::parser::Value::String(value),
+}
+
+// ---------------------------------------------------------------------------
+// Macros 
+// ---------------------------------------------------------------------------
+
+// TODO: 
+//   1. Add MacroIfDef
+//   2. Add MacroElseIfDef
+//   3. Add MacroIfNotDef
+
+
+MacroDefinition: MacroDefinition<'input> = {
+    <name:"ValueString"> <value:Value?> => {
+        MacroDefinition::new(name, value)
+    }
+}
+
+MacroDefine: Line<'input> = {
+    <d:"define"> <def:MacroDefinition> <comment:"Comment"?> "EOL" => Line::Macro(MacroType::Define(def), comment),
+}
+
+
+MacroElse: Line<'input> = {
+    <d:"else"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+        if !extras.is_empty() {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    // TODO: Need to create a more descriptive error
+                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                },
+                dropped_tokens: vec![]
+            };
+            errors.push(e);
+            Line::Error
+        } else {
+            Line::Macro(MacroType::Else, comment)
+        }
+    },
+}
+
+MacroEndif: Line<'input> = {
+    <d:"endif"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+        if !extras.is_empty() {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    // TODO: Need to create a more descriptive error
+                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                },
+                dropped_tokens: vec![]
+            };
+            errors.push(e);
+            Line::Error
+        } else {
+            Line::Macro(MacroType::EndIf, comment)
+        }
+    },
+}
+
+MacroInclude: Line<'input> = {
+    <d:"include"> <path:"ValueString"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+        if !extras.is_empty() {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    // TODO: Need to create a more descriptive error
+                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                },
+                dropped_tokens: vec![]
+            };
+            errors.push(e);
+            Line::Error
+        } else {
+            Line::Macro(MacroType::Include(path), comment)
+        }
+    }, 
+    <d:"include"> <path:"Quote"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+        if !extras.is_empty() {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    // TODO: Need to create a more descriptive error
+                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                },
+                dropped_tokens: vec![]
+            };
+            errors.push(e);
+            Line::Error
+        } else {
+            Line::Macro(MacroType::Include(path), comment)
+        }
+    }, 
+}
+
+UnknownMacro: Line<'input> = {
+     <l:@L> <m:"unknown_macro"> => {
+        let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    error: MoosParseError::new_unknown_macro(l, m)
+                },
+                dropped_tokens: vec![]
+            };
+        errors.push(e);
+        Line::Error
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Token Definitions 
+// ---------------------------------------------------------------------------
+
+extern {  
+    type Location = crate::lexer::Location;
+    type Error = MoosParseError<'input>;
+    
+    enum Token<'input> {
+        "(" => Token::ParenOpen, 
+        ")" => Token::ParenClose, 
+        "=" => Token::AssignOp,
+        "Comment" => Token::Comment(<&'input str>),
+        "Quote" => Token::Quote(<&'input str>),
+        "PartialQuote" => Token::PartialQuote(<&'input str>, <char>),
+        "Define" => Token::DefineKeyword,
+        "BlockKeyword" => Token::BlockKeyword(<&'input str>),
+        "Key" => Token::Key(<&'input str>),
+        "ValueString" => Token::ValueString(<&'input str>),
+        "EOL" => Token::EOL,
+        "EnvVariable" => Token::EnvVariable(<&'input str>),
+        "PartialEnvVariable" => Token::PartialEnvVariable(<&'input str>),
+        "{" => Token::CurlyOpen,
+        "}" => Token::CurlyClose,
+        "int" => Token::Integer(<i64>, <&'input str>),
+        "float" => Token::Float(<f64>, <&'input str>),
+        "bool" => Token::Boolean(<bool>, <&'input str>),
+        "define" => Token::MacroDefine,
+        "else" => Token::MacroElse,
+        "elseifdef" => Token::MacroElseIfDef,
+        "endif" => Token::MacroEndIf,
+        "ifdef" => Token::MacroIfDef,
+        "ifndef" => Token::MacroIfNotDef,
+        "include" => Token::MacroInclude,
+        "unknown_macro" => Token::UnknownMacro(<&'input str>),
+        "||" => Token::OrOperator,
+        "&&" => Token::AndOperator,
+    }
+}

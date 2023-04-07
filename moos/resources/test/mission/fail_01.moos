@@ -1,0 +1,4 @@
+ProcessConfig = MyApp {
+    // This should fail because the brace is supposed to be on it's own line
+    AppTick = 1
+}
