@@ -208,7 +208,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn int_test_subscibe() {
-        let _ = SimpleLogger::new().init();
+        let _ = SimpleLogger::new().without_timestamps().init();
         let port = get_new_port();
         let mut child = if let Some(child) = setup_moosdb(port) {
             child
@@ -264,7 +264,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn int_test_subscibe_from() {
-        let _ = SimpleLogger::new().init();
+        let _ = SimpleLogger::new().without_timestamps().init();
         let port = get_new_port();
         let mut child = if let Some(child) = setup_moosdb(port) {
             child
