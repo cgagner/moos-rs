@@ -1,3 +1,5 @@
+Cargo.lock
+/out
+/pkg
 /target
-/Cargo.lock
-/.vscode
+**/*.rs.bk
