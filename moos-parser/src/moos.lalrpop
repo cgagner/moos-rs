@@ -1,12 +1,12 @@
 use std::str::FromStr;
 use crate::helpers::remove_first_last;
-use crate::lexer::{Location, Token};
+use crate::lexer::{Location, State, Token};
 use crate::parser::{MacroDefinition, MacroCondition, MacroType, Line};
 use crate::error::MoosParseError;
 use lalrpop_util::ErrorRecovery;
 
 //grammar<'input>(input: &'input str);
-grammar<'err, 'input>(errors: &'err mut Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>, input: &'input str);
+grammar<'s, 'input>(state: &'s mut State<'input>, input: &'input str);
 
 pub Lines: Vec<Line<'input>> = <Line*>;
 
@@ -23,7 +23,7 @@ pub Line: Line<'input> = {
     "EOL" => Line::EndOfLine,
     <comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
-    ! => { errors.push(<>); Line::Error },
+    ! => { state.errors.push(<>); Line::Error },
     
 }
 
@@ -43,7 +43,7 @@ BlockBegin: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-            errors.push(e);
+            state.errors.push(e);
             Ok(Line::Error)
         }
         Some(_) => Ok(Line::BlockBegin(name, comment)),
@@ -55,7 +55,10 @@ BlockEnd: Line<'input> = {
 }
 
 Define: Line<'input> = {
-    <d:"Define"> <name:"Key"> "=" <value:Value> <comment:"Comment"?> "EOL" => Line::Define(name, value, comment),
+    <d:"Define"> <name:"ValueString"> "=" <value:Value> <comment:"Comment"?> "EOL" => {
+        state.defines.insert(name.to_owned(), value.to_string());
+        Line::Define(name, value, comment)
+    }
 }
 
 // TODO: I'm not sure we should be parsing variables like this here...
@@ -63,8 +66,7 @@ Define: Line<'input> = {
 // later. Technically, variables could be anything. E.G.
 // export TEST="TEST=1234"
 Assignment: Line<'input> = {
-    <key:Value*> "=" <value:Value*> <comment:"Comment"?> "EOL" => Line::Assignment(key,value, comment),
-    // <key:"EnvVariable"> "=" <value:Value> <comment:"Comment"?> "EOL" => Line::Assignment(key,value, comment),
+    <key:Value+> "=" <value:Value+> <comment:"Comment"?> "EOL" => Line::Assignment(key,value, comment),
 }
 
 // TODO: The original MOOS parser treated everything after the equal sign as
@@ -77,6 +79,14 @@ Value: crate::parser::Value<'input> = {
     <value:"float"> => crate::parser::Value::Float(value.0, value.1),
     <value:"ValueString"> => crate::parser::Value::String(value),
     <value:"Quote"> => crate::parser::Value::String(value),
+    <value:"EnvVariable"> => crate::parser::Value::EnvVariable(value),
+    <value:"PlugVariable"> => crate::parser::Value::PlugVariable(value),
+    <value:"PlugUpperVariable"> => crate::parser::Value::PlugUpperVariable(value),
+    <value:"PartialEnvVariable"> => crate::parser::Value::PartialEnvVariable(value),
+    <value:"PartialPlugVariable"> => crate::parser::Value::PartialPlugVariable(value),
+    <value:"PartialPlugUpperVariable"> => crate::parser::Value::PartialPlugUpperVariable(value),
+    <value:"{"> => crate::parser::Value::CurlyOpen,
+    <value:"}"> => crate::parser::Value::CurlyClose,
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +120,7 @@ MacroElse: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-            errors.push(e);
+            state.errors.push(e);
             Line::Error
         } else {
             Line::Macro(MacroType::Else, comment)
@@ -128,7 +138,7 @@ MacroEndif: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-            errors.push(e);
+            state.errors.push(e);
             Line::Error
         } else {
             Line::Macro(MacroType::EndIf, comment)
@@ -146,7 +156,7 @@ MacroInclude: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-            errors.push(e);
+            state.errors.push(e);
             Line::Error
         } else {
             Line::Macro(MacroType::Include(path), comment)
@@ -161,7 +171,7 @@ MacroInclude: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-            errors.push(e);
+            state.errors.push(e);
             Line::Error
         } else {
             Line::Macro(MacroType::Include(path), comment)
@@ -177,7 +187,7 @@ UnknownMacro: Line<'input> = {
                 },
                 dropped_tokens: vec![]
             };
-        errors.push(e);
+        state.errors.push(e);
         Line::Error
     }
 }
@@ -206,6 +216,10 @@ extern {
         "EOL" => Token::EOL,
         "EnvVariable" => Token::EnvVariable(<&'input str>),
         "PartialEnvVariable" => Token::PartialEnvVariable(<&'input str>),
+        "PlugVariable" => Token::PlugVariable(<&'input str>),
+        "PartialPlugVariable" => Token::PartialPlugVariable(<&'input str>),
+        "PlugUpperVariable" => Token::PlugUpperVariable(<&'input str>),
+        "PartialPlugUpperVariable" => Token::PartialPlugUpperVariable(<&'input str>),
         "{" => Token::CurlyOpen,
         "}" => Token::CurlyClose,
         "int" => Token::Integer(<i64>, <&'input str>),

@@ -3,13 +3,23 @@ use crate::error::MoosParseError;
 use core::cmp::max;
 use core::str;
 use core::str::{CharIndices, ParseBoolError};
-use std::collections::VecDeque;
+use lalrpop_util::ErrorRecovery;
+use std::collections::{HashMap, VecDeque};
 use std::iter::{Chain, Repeat, Skip};
 use std::num::{ParseFloatError, ParseIntError};
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
 pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
 
+#[derive(Debug, Default, Clone)]
+pub struct State<'input> {
+    pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>,
+    pub defines: HashMap<String, String>,
+}
+
+// The end index is non inclusive.. I.E. it is up to, but not including the
+// end index. A token that is of size one, should have an end index one larger
+// than the start index.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Location {
     pub line: usize,
@@ -299,18 +309,6 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
     }
 
     #[inline]
-    fn scan_comment(&mut self, input: &'input str, line_index: usize) {
-        if !input.starts_with("//") {
-            log::trace!("scan_comment called without comment: {:?}", input);
-            return;
-        }
-        self.push_token(
-            line_index,
-            Token::Comment(&input[2..].trim()),
-            line_index + input.len(),
-        );
-    }
-    #[inline]
     fn scan_keywords_and_values(&mut self, line: &'input str, line_index: usize) {
         // Sanity check that the input is at least 1 characters
         if line.len() < 1 {
@@ -389,7 +387,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             self.previous_index = self.get_safe_index(i + 2);
         }
 
-        self.push_token(i, Token::OrOperator, i + 1);
+        self.push_token(i, Token::OrOperator, i + 2);
     }
 
     fn tokenize_and_operator(&mut self, i: usize) {
@@ -401,7 +399,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             self.previous_index = self.get_safe_index(i + 2);
         }
 
-        self.push_token(i, Token::AndOperator, i + 1);
+        self.push_token(i, Token::AndOperator, i + 2);
     }
 
     fn get_macro_token(line: &'input str) -> Token<'input> {
@@ -471,7 +469,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             // Get the line
             let line = &self.input[i + 1..ii];
             let token = Self::get_macro_token(line);
-            self.push_token(i, token, i + ii - 1);
+            self.push_token(i, token, ii);
             self.previous_index = self.get_safe_index(ii);
             match cc {
                 '\n' => {
@@ -489,7 +487,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             // If we get here, we reached the end of the file.
             let line = &self.input[i + 1..];
             let token = Self::get_macro_token(line);
-            self.push_token(i, token, i + self.input.len() - 1);
+            self.push_token(i, token, self.input.len());
             self.previous_index = None;
             return;
         };
@@ -618,7 +616,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                     self.push_token(i, Token::Quote(&self.input[i + 1..ii]), ii + 1);
                     self.trim_start = false;
                     self.previous_index = self.get_safe_index(ii + 1);
-                    println!("Found quote: {}", &self.input[i + 1..ii]);
+                    log::trace!("Found quote: {}", &self.input[i + 1..ii]);
                     return;
                 }
                 '\n' => {
@@ -716,7 +714,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             }
         }
 
-        self.push_token(i, token, i + 1);
+        self.push_token(i, token, i + 1); // Checked
         self.previous_index = self.get_safe_index(i + 1);
         self.start_of_line = false;
         // Preserve spaces
@@ -765,7 +763,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                 } else {
                     Token::PlugVariable(&self.input[i + 2..ii])
                 };
-                self.push_token(i, token, ii);
+                self.push_token(i, token, ii + 1);
                 self.previous_index = self.get_safe_index(ii + 1);
                 self.start_of_line = false;
                 self.trim_start = false;
@@ -809,7 +807,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             } else {
                 // Variable
                 let token = Token::PlugUpperVariable(&self.input[i + 2..ii]);
-                self.push_token(i, token, ii);
+                self.push_token(i, token, ii + 1);
                 self.previous_index = self.get_safe_index(ii + 1);
                 self.start_of_line = false;
                 self.trim_start = false;
@@ -914,7 +912,7 @@ impl<'input, 'listen> Iterator for Lexer<'input, 'listen> {
 mod tests {
     use crate::{
         error::MoosParseError,
-        lexer::{Lexer, Location, Token, TokenListener},
+        lexer::{Lexer, Location, State, Token, TokenListener},
     };
     use log;
 
@@ -1043,7 +1041,7 @@ mod tests {
             (
                 Location::new(0, 0),
                 Token::EnvVariable("THIS_is_a_VARIABLE"),
-                Location::new(0, 20)
+                Location::new(0, 21)
             ),
             iter.unwrap().unwrap()
         );
@@ -1588,8 +1586,8 @@ mod tests {
         }
 
         lexer = Lexer::new(input);
-        let mut errors = Vec::new();
-        let result = moos::LinesParser::new().parse(&mut errors, input, lexer);
+        let mut state = State::default();
+        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
         if let Err(e) = &result {
             println!("Lexer Error: {:?}", e);
         }

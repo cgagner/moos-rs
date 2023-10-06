@@ -44,6 +44,8 @@ Tasks:
     - [ ] Implement `Drop` for the `AsyncClient`
 - [ ] MOOS Application struct or macro
     - [ ] Parse mission file
+        - [ ] Create the Config class
+        - [ ] Allow marking options as deprecated
     - [ ] Parse arguments
     - [ ] Handle publishing App status (e.g. CPU load)
 - [ ] Example / Tutorial

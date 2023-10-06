@@ -1,0 +1,31 @@
+// ----------------------------------------------------------------------------
+// moos-monitor example MOOS Configuration
+// ----------------------------------------------------------------------------
+ProcessConfig = moos-monitor
+{
+  AppTick   = 4
+  CommsTick = 4
+
+  var    = NAV_X, NAV_Y, NAV_SPEED, NAV_HEADING
+  var    = PROC_WATCH_SUMMARY
+  var    = PROC_WATCH_EVENT
+  source = pHelmIvP, pMarineViewer
+
+  history_var           = DB_CLIENTS
+
+  display_virgins       = true    // default
+  display_source        = false   // default
+  display_aux_source    = false   // default
+  display_time          = false   // default
+  display_community     = false   // default
+  display_all           = false   // default
+  trunc_data            = 40      // default is no trucation.
+
+  term_report_interval  = 0.6     // default (seconds)
+
+  colormap    = pHelmIvP, red   // All postings by pHelmIvP red
+  colormap    = NAV_SPEED, blue // Only var NAV_SPEED is blue
+
+  refresh_mode = events     // default (or streaming/paused)
+  content_mode = scoping    // default (or history,procs)
+}

@@ -16,6 +16,56 @@ pub enum Value<'input> {
     Integer(i64, &'input str),
     Float(f64, &'input str),
     String(&'input str),
+    EnvVariable(&'input str),
+    PlugVariable(&'input str),
+    PlugUpperVariable(&'input str),
+    PartialEnvVariable(&'input str),
+    PartialPlugVariable(&'input str),
+    PartialPlugUpperVariable(&'input str),
+    CurlyOpen,
+    CurlyClose,
+}
+
+impl<'input> ToString for Value<'input> {
+    fn to_string(&self) -> String {
+        match *self {
+            Self::Boolean(_, value_str)
+            | Self::Integer(_, value_str)
+            | Self::Float(_, value_str)
+            | Self::String(value_str) => value_str.trim().to_owned(),
+            Self::EnvVariable(value_str) => {
+                std::env::var(value_str).unwrap_or(format!("${{{}}}", value_str.trim()))
+            }
+            Self::PartialEnvVariable(value_str) => format!("${{{}", value_str.trim()),
+            // We won't evaluate plug variables as part of this parser.
+            Self::PlugVariable(value_str) => format!("$({})", value_str.trim()),
+            Self::PlugUpperVariable(value_str) => format!("%({})", value_str.trim()),
+            Self::PartialPlugVariable(value_str) => format!("$({}", value_str.trim()),
+            Self::PartialPlugUpperVariable(value_str) => format!("%({}", value_str.trim()),
+            Self::CurlyOpen => "{".to_owned(),
+            Self::CurlyClose => "}".to_owned(),
+        }
+    }
+}
+
+struct Values<'input>(Vec<Value<'input>>);
+
+impl<'input> IntoIterator for Values<'input> {
+    type Item = Value<'input>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'input> Values<'input> {
+    pub fn eval(&self) -> String {
+        let rtn = "".to_owned();
+        self.0
+            .iter()
+            .fold(rtn, |acc, v| acc + v.to_string().as_str())
+    }
 }
 
 #[derive(Debug)]
@@ -76,7 +126,7 @@ pub enum Line<'input> {
 #[cfg(test)]
 mod tests {
 
-    use crate::lexer::Lexer;
+    use crate::lexer::{Lexer, State};
 
     lalrpop_mod!(
         #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
@@ -99,8 +149,8 @@ mod tests {
         }
 
         lexer = Lexer::new(input);
-        let mut errors = Vec::new();
-        let result = moos::LinesParser::new().parse(&mut errors, input, lexer);
+        let mut state = State::default();
+        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
         println!("Result: {:?}", result);
 
         // // This test should fail
@@ -135,26 +185,23 @@ mod tests {
         }
 
         lexer = Lexer::new(input);
-        let mut errors = Vec::new();
-        let result = moos::LinesParser::new().parse(&mut errors, input, lexer);
+        let mut state = State::default();
+        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
         println!("Result: {:?}", result);
 
         // This test should fail
         assert!(result.is_ok());
+        assert!(state.errors.is_empty());
     }
 
     #[test]
     fn test_line_parser() {
         let input = r#"
+        define: TEST_VAR = 1234
         // Test Mission File
         ServerHost   = localhost
         ServerPort   = 9000
         Community    = alpha
-
-
-
-
-
 
         ${TEST}      = 12
         MOOSTimeWarp = 1
@@ -170,17 +217,21 @@ mod tests {
         {
           MSBetweenLaunches = 200
           ExecutablePath = system // System path
-          Run = MOOSDB          @ NewConsole =
+          Run = MOOSDB          @ NewConsole = false
           Run = pLogger         @ NewConsole = true
           Run = uSimMarine      @ NewConsole = false
           Run = pMarinePID      @ NewConsole = false
-          Run = pHelmIvP        @ NewConsole = false
+          Run = pHelmIvP        @ NewConsole = true, ExtraProcessParams=HParams
           Run = pMarineViewer	@ NewConsole = false
           Run = uProcessWatch	@ NewConsole = false
           Run = pNodeReporter	@ NewConsole = false
           Run = uMemWatch       @ NewConsole = false
-        }
+          Run = pXRelay @ NewConsole = true ~ pXRelay_PEARS
 
+          // Helm Params
+          HParams=--alias=pHelmIvP_Standby
+        }
+        define: MY_VAR = "this is a test"
         //------------------------------------------
         // uMemWatch config block
 
@@ -203,8 +254,12 @@ mod tests {
         }
 
         lexer = Lexer::new(input);
-        let mut errors = Vec::new();
-        let result = moos::LinesParser::new().parse(&mut errors, input, lexer);
+        let mut state = State::default();
+        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
         println!("Result: {:?}", result);
+        println!("\nErrors: {:?}", state.errors);
+        println!("\nDefines: {:?}", state.defines);
+
+        //assert!(errors.is_empty())
     }
 }

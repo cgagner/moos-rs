@@ -1,8 +1,10 @@
+pub mod app;
 pub mod async_client;
 pub mod errors;
 pub mod message;
 pub mod mission;
 
+pub use moos_macros::Config;
 use std::sync::{Arc, Once, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -354,5 +356,22 @@ mod tests {
             .disconnect()
             .await
             .expect(format!("Failed to disconnect {}", client.get_name()).as_str());
+    }
+
+    use moos_macros::Config;
+    #[test]
+    fn test_config_macro() {
+        println!("Test Macro:");
+
+        #[derive(Config)]
+        #[param(name = "test", value = "String")]
+        struct Person {
+            #[param(name = "test")]
+            name: String,
+            age: f64,
+            is_alive: bool,
+        }
+
+        Person::print_fields();
     }
 }

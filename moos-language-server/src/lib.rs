@@ -1,4 +1,5 @@
 use lsp_types::SemanticToken;
+use moos_parser::lexer::State;
 use wasm_bindgen::convert::ReturnWasmAbi;
 
 use core::result::Result;
@@ -170,16 +171,16 @@ impl MoosLanguageServer {
         let input = document.text.as_str();
         let mut c = Cache::new();
 
-        let mut errors = Vec::new();
+        let mut state = State::default();
         let mut listener = cache::MoosTokenListener::new(&mut c);
         let mut lexer = moos_parser::Lexer::new(input);
         lexer.add_listener(&mut listener);
 
-        let result = moos_parser::LinesParser::new().parse(&mut errors, input, lexer);
+        let result = moos_parser::LinesParser::new().parse(&mut state, input, lexer);
 
         // TODO: Need to write a helper to convert between MoosParseErrors
         // and diagnostics
-        for e in errors {
+        for e in state.errors {
             log::error!("Found error when parsing: {:?}", e);
 
             match e.error {
@@ -210,6 +211,28 @@ impl MoosLanguageServer {
                     MoosParseErrorKind::UnexpectedSymbol(c) => {}
                     _ => {}
                 },
+                ParseError::UnrecognizedToken { token, expected } => {
+                    let (loc_start, token, loc_end) = token;
+                    let d = Diagnostic::new(
+                        lsp_types::Range {
+                            start: lsp_types::Position {
+                                line: loc_start.line as u32,
+                                character: loc_start.index as u32,
+                            },
+                            end: lsp_types::Position {
+                                line: loc_end.line as u32,
+                                character: loc_end.index as u32,
+                            },
+                        },
+                        Some(DiagnosticSeverity::ERROR),
+                        None,
+                        None,
+                        format!("Unrecognized token: {:?}. Expected: {:?}", token, expected),
+                        None,
+                        None,
+                    );
+                    c.diagnostics.push(d);
+                }
                 _ => {}
             }
         }
@@ -247,12 +270,12 @@ impl MoosLanguageServer {
             let mut listener = cache::MoosTokenListener::new(&mut c);
             let mut lexer = moos_parser::Lexer::new(input);
             lexer.add_listener(&mut listener);
-            let mut errors = Vec::new();
-            let result = moos_parser::LinesParser::new().parse(&mut errors, input, lexer);
+            let mut state = State::default();
+            let result = moos_parser::LinesParser::new().parse(&mut state, input, lexer);
 
             // TODO: Need to write a helper to convert between MoosParseErrors
             // and diagnostics
-            for e in errors {
+            for e in state.errors {
                 log::error!("Found error when parsing: {:?}", e);
 
                 match e.error {
@@ -283,6 +306,28 @@ impl MoosLanguageServer {
                         MoosParseErrorKind::UnexpectedSymbol(c) => {}
                         _ => {}
                     },
+                    ParseError::UnrecognizedToken { token, expected } => {
+                        let (loc_start, token, loc_end) = token;
+                        let d = Diagnostic::new(
+                            lsp_types::Range {
+                                start: lsp_types::Position {
+                                    line: loc_start.line as u32,
+                                    character: loc_start.index as u32,
+                                },
+                                end: lsp_types::Position {
+                                    line: loc_end.line as u32,
+                                    character: loc_end.index as u32,
+                                },
+                            },
+                            Some(DiagnosticSeverity::ERROR),
+                            None,
+                            None,
+                            format!("Unrecognized token: {:?}. Expected: {:?}", token, expected),
+                            None,
+                            None,
+                        );
+                        c.diagnostics.push(d);
+                    }
                     _ => {}
                 }
             }

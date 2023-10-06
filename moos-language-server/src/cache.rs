@@ -160,7 +160,7 @@ impl<'c> TokenListener for MoosTokenListener<'c> {
         // This method seems flawed.
         // PartialQuotes and PartialVariables seems to break
         let mut added = false;
-        let length = max((end_loc.index - start_loc.index + 1) as u32, 0);
+        let length = max((end_loc.index - start_loc.index) as u32, 0);
         let delta_line = max(start_loc.line as u32 - self.previous_line, 0);
         let delta_index = if delta_line > 0 {
             start_loc.index as u32
@@ -393,10 +393,12 @@ impl<'c> TokenListener for MoosTokenListener<'c> {
         }
         if added {
             log::debug!(
-                "token: {:?}\nstart_index: {}\nprevious_index:{}",
+                "token: {:?}\n  start_index: {}\n  previous_index: {}\n  end_index: {}\n  length: {}",
                 token,
                 start_loc.index,
-                self.previous_index
+                self.previous_index,
+                end_loc.index,
+                length,
             );
 
             self.previous_line = start_loc.line as u32;
