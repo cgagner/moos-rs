@@ -1,0 +1,97 @@
+use std::str::FromStr;
+use lalrpop_util::ErrorRecovery;
+use lalrpop_util::ParseError;
+
+use crate::nsplug_tree::*;
+
+grammar(start_of_file: &mut bool);
+
+// TODO: Lines must preserve space
+
+match {
+    r"[ \t\r]*" => { }, // Ignore space, tab, and cr
+    r"//[^\n\r]*[\n\r]*" => { }, // Ignore Line Comments
+    r"\n[ \t\n]" => EOL,
+    r"<[^>]*>",
+    r###""[^"]*""###,
+     r"\$\([^)]*\)",
+     r"%\([^)]*\)",
+     "#ifdef",
+     "#elseifdef",
+     "#else",
+     "#endif",
+     "#ifndef",
+     // Not supported #elseifndef
+     "&&",
+     "||",
+
+} else {
+    _
+}
+
+pub Directives: () = {
+    Directive*
+}
+
+Directive: () = {
+    IncludeDirective,
+    DefineDirective,
+    EOL <p1:@R> => println!("Found new line: {}", p1),
+    Conditional,
+    OtherLine,
+    ! => println!("ERROR! Found an error: {:?}", <>),
+}
+
+IncludeDirective: () = {
+    IncludeLiteral r"<[^>]*>" EOL => {
+        println!("Found include: {:?} {:?} {:?}", <>);
+    },
+    IncludeLiteral r###""[^"]*""### EOL => {
+        println!("Found include: {:?} {:?} {:?}", <>)
+    },
+}
+
+Conditional: () = {
+    "#ifdef" Condition EOL Directive* ElseIfDef* ("#else" EOL Directive*)?  "#endif" EOL => println!("Found Conditional"),
+}
+
+ElseIfDef: () = {
+    "#elseifdef" Condition EOL Directive*
+}
+
+Condition: () = {
+    Word Word?,
+    Word Word? ("||" Word Word?)+,
+    Word Word? ("&&" Word Word?)+,
+}
+
+DefineDirective: Define = {
+    "#define" <w1: Word> <w2: Word> EOL => Define::new(&w1, &w2),
+    "#define" <w1: Word> EOL => Define::new(&w1, ""),
+}
+
+IncludeLiteral: () = {
+    <p1:@L> "#include" <p2:@R> => {println!("Found include literal: {} {}", p1, p2)},
+}
+
+OtherLine: () = {
+    WordOrVariable+ EOL,
+}
+
+WordOrVariable: () = {
+    Word,
+    Variable,
+}
+
+Variable: String = {
+     r"\$\([^)]*\)" => <>.to_string(),
+     r"%\([^)]*\)" => <>.to_string(),
+}
+
+Word: String = {
+    r"[^ \t\r\n]+" => <>.to_string()
+}
+
+WhiteSpace: String = {
+    r"[ \t]" => <>.to_string()
+}
