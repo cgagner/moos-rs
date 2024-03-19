@@ -3,7 +3,8 @@
 Parser for MOOS-IvP mission files for Rust.
 
 ## TODO
-
+- [ ] Separate out the NSPlug parser
+  - [ ] Define Macros do NOT handle comments. `#define FOO Apples // Some Comment` yields `FOO` = `Apples // Some Comment`
 - [x] Fix the `_next()` method. Currently just returns None. Requires
       `tokenize()` to be called first.
 - [ ] Update Float, Integer, Bool tokens to have both the string and primitive

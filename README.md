@@ -12,3 +12,25 @@ crates will be coming soon:
    as `vim` and `emacs`, but those editors are not on the current roadmap.
 
 For additional information, please contact contact christoper.gagner@gmail.com
+
+## MOOS Labs Rust Tasks
+
+MOOS Features:
+  - MOOS Application
+  - App casting
+
+* Lab 01: Machine Setup
+  - [ ] Add a section for setting up Rust
+* Lab 02: Introduction to Rust
+  - [ ] Simple introduction. Point to Rust book.
+* 
+* Lab 04: Intro to MOOS
+  - [ ] MOOS App structure in Rust
+  - [ ] Functions on MOOS Msg
+  - [ ] `moos-ivp-extend`
+  - [ ] `pOdometry`
+  - [ ] Template. Possibly use Cargo to create. `cargo-generate`.
+  - [ ] Alder mission
+  - [ ] Setup logging
+
+

@@ -8,10 +8,10 @@ build = "build.rs"
 
 [dependencies]
 regex = "1"
-lalrpop-util = {version = "0.19.6", features = ["lexer"]}
+lalrpop-util = {version = "0.19.12", features = ["lexer"]}
 log = "0.4"
 
 
 [build-dependencies]
-lalrpop = {version = "0.19.6", features = ["lexer"]}
+lalrpop = {version = "0.19.12", features = ["lexer"]}
 
