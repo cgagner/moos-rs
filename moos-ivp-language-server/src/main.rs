@@ -20,9 +20,10 @@
  *    - [ ] Plug files
  *    - [ ] Mission files
  *    - [ ] Behavior files
+ *  - [ ] Tracing via setTrace
  *
  * TODO:
- *  - [ ] Setup tracing
+ *  - [x] Setup tracing
  *  - [ ] Handle command line arguments
  *  - [ ] Create cache of files being changed. Need to clear cache when files
  *        are saved or closed.
@@ -38,17 +39,30 @@
 // the lsp interactions with stdio.
 #![allow(clippy::print_stderr)]
 
+mod cache;
+mod tracer;
+
 use std::error::Error;
 
-use lsp_types::OneOf;
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
 use lsp_types::{
-    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
+    notification::DidChangeTextDocument, notification::Notification, request::GotoDefinition,
+    GotoDefinitionResponse, InitializeParams, ServerCapabilities, TextDocumentSyncCapability,
+};
+use lsp_types::{
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, OneOf, TextDocumentSyncKind,
 };
 
-use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+use tracing::debug as mlog;
+use tracing::{
+    debug, debug_span, error, error_span, info, info_span, trace, trace_span, warn, warn_span,
+};
+
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
+    tracer::Tracer::init()?;
+
     // Note that  we must have our logging only write out to stderr.
-    eprintln!("Starting MOOS-IvP LSP server");
+    info!("Starting MOOS-IvP LSP server");
 
     // Create the connection to the client.
     // TODO: Need to add support for --port and --pipe
@@ -57,6 +71,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         definition_provider: Some(OneOf::Left(true)),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         ..Default::default()
     })?;
 
@@ -75,7 +90,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     io_threads.join()?;
 
     // Shut down gracefully.
-    eprintln!("shutting down server");
+    info!("shutting down server");
     Ok(())
 }
 
@@ -84,18 +99,18 @@ fn main_loop(
     params: serde_json::Value,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params)?;
-    eprintln!("starting example main loop");
+    info!("starting example main loop");
     for msg in &connection.receiver {
-        eprintln!("got msg: {msg:?}");
+        trace!("got msg: {msg:?}");
         match msg {
             Message::Request(req) => {
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                eprintln!("got request: {req:?}");
-                match cast::<GotoDefinition>(req) {
+                mlog!("got request: {req:?}");
+                match cast_request::<GotoDefinition>(req) {
                     Ok((id, params)) => {
-                        eprintln!("got gotoDefinition request #{id}: {params:?}");
+                        mlog!("got gotoDefinition request #{id}: {params:?}");
                         let result = Some(GotoDefinitionResponse::Array(Vec::new()));
                         let result = serde_json::to_value(&result).unwrap();
                         let resp = Response {
@@ -112,20 +127,38 @@ fn main_loop(
                 // ...
             }
             Message::Response(resp) => {
-                eprintln!("got response: {resp:?}");
+                mlog!("got response: {resp:?}");
             }
-            Message::Notification(not) => {
-                eprintln!("got notification: {not:?}");
+            Message::Notification(notification) => {
+                mlog!("got notification: {notification:?}");
+                if let Err(e) = handle_notification(notification) {
+                    error!("Failed to handle notification: {e:?}");
+                }
             }
         }
     }
     Ok(())
 }
 
-fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
+fn cast_request<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
 where
     R: lsp_types::request::Request,
     R::Params: serde::de::DeserializeOwned,
 {
     req.extract(R::METHOD)
+}
+
+fn handle_notification(notification: lsp_server::Notification) -> anyhow::Result<()> {
+    use serde_json::from_value;
+    let method = notification.method.as_str();
+    let params = notification.params;
+    match method {
+        DidChangeTextDocument::METHOD => {
+            let change_params: DidChangeTextDocumentParams = from_value(params)?;
+            debug!("Handle change: {change_params:?}");
+        }
+        _ => info!("Unexpected notification: {method}"),
+    };
+
+    Ok(())
 }
