@@ -44,19 +44,39 @@ mod tracer;
 
 use std::error::Error;
 
-use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+// NOTE: Do not use lsp_server::{Notification, Request}. These conflict with
+// other types.
+
+use lsp_server::{Connection, ExtractError, Message, RequestId, Response};
 use lsp_types::{
-    notification::DidChangeTextDocument, notification::Notification, request::GotoDefinition,
-    GotoDefinitionResponse, InitializeParams, ServerCapabilities, TextDocumentSyncCapability,
-};
-use lsp_types::{
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, OneOf, TextDocumentSyncKind,
+    notification::{
+        DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, Notification,
+    },
+    request::{GotoDefinition, Request},
+    GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
 use tracing::debug as mlog;
 use tracing::{
     debug, debug_span, error, error_span, info, info_span, trace, trace_span, warn, warn_span,
 };
+
+use lsp_server_derive_macro::{notification_handler, request_handler};
+
+// Declare the Requests that we are going to handle.
+#[request_handler]
+enum MyRequests {
+    GotoDefinition,
+}
+
+// Declare the Notifications we are going to handle.
+#[notification_handler]
+enum MyNotifications {
+    DidChangeTextDocument,
+    DidOpenTextDocument,
+    DidChangeConfiguration,
+}
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     tracer::Tracer::init()?;
@@ -108,8 +128,9 @@ fn main_loop(
                     return Ok(());
                 }
                 mlog!("got request: {req:?}");
-                match cast_request::<GotoDefinition>(req) {
-                    Ok((id, params)) => {
+                use MyRequests::*;
+                match MyRequests::from(req) {
+                    GotoDefinition(id, params) => {
                         mlog!("got gotoDefinition request #{id}: {params:?}");
                         let result = Some(GotoDefinitionResponse::Array(Vec::new()));
                         let result = serde_json::to_value(&result).unwrap();
@@ -119,12 +140,12 @@ fn main_loop(
                             error: None,
                         };
                         connection.sender.send(Message::Response(resp))?;
-                        continue;
                     }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-                // ...
+                    Unhandled(req) => info!("Unhandled Request {:?}", req.method),
+                    Error { method, error } => {
+                        error!("Failed to handle Request {method}: {error:?}")
+                    }
+                }
             }
             Message::Response(resp) => {
                 mlog!("got response: {resp:?}");
@@ -140,25 +161,17 @@ fn main_loop(
     Ok(())
 }
 
-fn cast_request<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
-where
-    R: lsp_types::request::Request,
-    R::Params: serde::de::DeserializeOwned,
-{
-    req.extract(R::METHOD)
-}
-
 fn handle_notification(notification: lsp_server::Notification) -> anyhow::Result<()> {
-    use serde_json::from_value;
-    let method = notification.method.as_str();
-    let params = notification.params;
-    match method {
-        DidChangeTextDocument::METHOD => {
-            let change_params: DidChangeTextDocumentParams = from_value(params)?;
-            debug!("Handle change: {change_params:?}");
+    use MyNotifications::*;
+    match MyNotifications::from(notification) {
+        DidChangeConfiguration(params) => {
+            info!("Configuration Changed: {params:?}")
         }
-        _ => info!("Unexpected notification: {method}"),
-    };
+        DidChangeTextDocument(params) => info!("Document Changed: {params:?}"),
+        DidOpenTextDocument(params) => info!("Document Opened: {params:?}"),
+        Unhandled(n) => info!("Unhandled Notification: {:?}", n.method),
+        Error { method, error } => error!("Failed to handle Notification {method}: {error:?}"),
+    }
 
     Ok(())
 }
