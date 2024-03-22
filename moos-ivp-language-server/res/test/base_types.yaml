@@ -1,0 +1,22 @@
+
+types: 
+  # Example of an inline description
+  - Latitude: WGS-84 Latitude
+    type: Float
+      min: -90
+      max: 90
+  # Example of an in-body description
+  - Longitude:
+    description: WGS-84 Longitude
+    type: Float
+      min: -180
+      max: 180
+  - X_Location: X-Location in local coordinates
+    type: Float
+  - Y_Location: Y-Location in local coordinates
+  - LocalCoordinate: Tuple of an X-location and Y-Location
+    type: Tuple
+      - x: X-Location in local coordinates
+        type: X_Location
+      - y: Y-Location in local coordinates
+        type: Y_Location

@@ -55,6 +55,7 @@ pub fn request_handler(_metadata: TokenStream, input: TokenStream) -> TokenStrea
             // Convert from an lsp_server::Request to a #ident variant.
             impl From<lsp_server::Request> for #ident {
                 fn from(request: lsp_server::Request) -> Self {
+                    use lsp_types::request::Request;
                     let method = request.method.as_str();
                     match method {
                         #(#variant_conversions)*
@@ -118,6 +119,7 @@ pub fn notification_handler(_metadata: TokenStream, input: TokenStream) -> Token
             // Convert from an lsp_server::Notification to a #ident variant.
             impl From<lsp_server::Notification> for #ident {
                 fn from(notification: lsp_server::Notification) -> Self {
+                    use lsp_types::notification::Notification;
                     let method = notification.method.as_str();
                     match method {
                         #(#variant_conversions)*

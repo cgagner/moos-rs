@@ -3,6 +3,10 @@
  *  - [ ] NSPlug
  *  - [ ] MOOS Missions
  *  - [ ] IvP Behavior files
+ *  - [ ] MOOS-IvP Emacs settings for keywords
+ *  - [ ] Create new file format for Behavior and MOOS app variables with description
+ *  - [ ] MOOS-IvP Manifests
+ *  - [ ] Create method for converting between Parser Range and LSP Range.
  *
  * Desired Language Features:
  *  - [ ] Parse Workspace Configuration
@@ -20,6 +24,7 @@
  *    - [ ] Plug files
  *    - [ ] Mission files
  *    - [ ] Behavior files
+ *    - [ ] Left justified, left justified aligned equals, right justified
  *  - [ ] Tracing via setTrace
  *
  * TODO:
@@ -40,19 +45,17 @@
 #![allow(clippy::print_stderr)]
 
 mod cache;
+mod handle;
+mod lsp;
 mod tracer;
+mod trees;
 
 use std::error::Error;
 
-// NOTE: Do not use lsp_server::{Notification, Request}. These conflict with
-// other types.
-
-use lsp_server::{Connection, ExtractError, Message, RequestId, Response};
+use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
-    notification::{
-        DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, Notification,
-    },
-    request::{GotoDefinition, Request},
+    notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
+    request::{Completion, GotoDefinition},
     GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind,
 };
@@ -64,10 +67,13 @@ use tracing::{
 
 use lsp_server_derive_macro::{notification_handler, request_handler};
 
+use crate::handle::{handle_notification, handle_request};
+
 // Declare the Requests that we are going to handle.
 #[request_handler]
 enum MyRequests {
     GotoDefinition,
+    Completion,
 }
 
 // Declare the Notifications we are going to handle.
@@ -123,29 +129,11 @@ fn main_loop(
     for msg in &connection.receiver {
         trace!("got msg: {msg:?}");
         match msg {
-            Message::Request(req) => {
-                if connection.handle_shutdown(&req)? {
+            Message::Request(request) => {
+                if connection.handle_shutdown(&request)? {
                     return Ok(());
                 }
-                mlog!("got request: {req:?}");
-                use MyRequests::*;
-                match MyRequests::from(req) {
-                    GotoDefinition(id, params) => {
-                        mlog!("got gotoDefinition request #{id}: {params:?}");
-                        let result = Some(GotoDefinitionResponse::Array(Vec::new()));
-                        let result = serde_json::to_value(&result).unwrap();
-                        let resp = Response {
-                            id,
-                            result: Some(result),
-                            error: None,
-                        };
-                        connection.sender.send(Message::Response(resp))?;
-                    }
-                    Unhandled(req) => info!("Unhandled Request {:?}", req.method),
-                    Error { method, error } => {
-                        error!("Failed to handle Request {method}: {error:?}")
-                    }
-                }
+                handle_request(request);
             }
             Message::Response(resp) => {
                 mlog!("got response: {resp:?}");
@@ -158,20 +146,5 @@ fn main_loop(
             }
         }
     }
-    Ok(())
-}
-
-fn handle_notification(notification: lsp_server::Notification) -> anyhow::Result<()> {
-    use MyNotifications::*;
-    match MyNotifications::from(notification) {
-        DidChangeConfiguration(params) => {
-            info!("Configuration Changed: {params:?}")
-        }
-        DidChangeTextDocument(params) => info!("Document Changed: {params:?}"),
-        DidOpenTextDocument(params) => info!("Document Opened: {params:?}"),
-        Unhandled(n) => info!("Unhandled Notification: {:?}", n.method),
-        Error { method, error } => error!("Failed to handle Notification {method}: {error:?}"),
-    }
-
     Ok(())
 }

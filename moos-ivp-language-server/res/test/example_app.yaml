@@ -1,0 +1,77 @@
+
+includes: 
+  - base_types.yaml
+  - test.yaml
+
+types:
+  - Color:
+    description: Color to render
+    type: String
+      values:
+      - red: Red
+      - blue: Blue
+      - green: Green
+  - Marker:
+    description: Static marker location
+    type: Object
+      - members:
+        type:
+          description: Type of marker
+          type: String
+            values:
+              - triangle
+              - square
+              - circle
+              - diamond
+              - efield: Slit circle with two colors, one of which is always black
+              - gateway: Octagon with a center.
+        color: Color
+        x: X_Location
+        y: Y_Location
+        lat: Latitude
+        lon: Longitude
+        width:
+          description: >
+            The width parameter is given in meters drawn to scale on
+            the geo display. Shapes are roughly 10x10 meters by default. 
+            The GUI provides a hook to scale all markers globally with the 
+            ALT-m and CTRL-m hot keys and in the GeoAttributes pull-down menu
+          type: Float
+            min: 0
+
+ applications:
+  - pExampleApp:
+    description: Viewer
+    author: Joe Kerr
+    is_moos_app: true
+    supports_app_stream: false
+    members:
+      - AppTick:
+        description: How fast to run iterate
+        type: Float
+          min: 0.1
+          max: 200
+        required: true
+      - logging_enabled:
+        description: Example boolean of a 
+        type: Boolean
+      - vertex_edge_color:
+        description: Color to render the vertices
+        type: Color
+        default_value: red
+      - maker:
+        description: Add a static marker
+        type: Marker
+        required: true # Defaults to false
+
+      - VIEW_SEGLIST:
+        example: pts={60,-40:60,-160:150,-160:180,-100:150,-40},label=waypt_survey
+        type: Object
+          description: Variable to post a static line segment to be rendered
+          allow_duplicates: true
+          members:
+            - pts: Points of the line segment
+              required: true
+              type: List<LocalCoordinate>
+
+            
