@@ -10,12 +10,12 @@ use tracing::trace;
 // than the start index.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Location {
-    pub line: usize,
-    pub index: usize,
+    pub line: u32,
+    pub index: u32,
 }
 
 impl Location {
-    pub fn new(line: usize, index: usize) -> Self {
+    pub fn new(line: u32, index: u32) -> Self {
         Location { line, index }
     }
 }
@@ -29,21 +29,32 @@ impl Default for Location {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Range {
     /// Starting character in a line (inclusive)
-    start: usize,
+    start: u32,
     /// Ending character in a line (exclusive)
-    end: usize,
+    end: u32,
 }
 
 impl Range {
-    /// Create a new Range. Returns `None` if `start` is not less than `end`.
-    pub fn new(start: usize, end: usize) -> Option<Self> {
+    /// Create a new `Range`. Returns `None` if `start` is not less than `end`.
+    pub fn new(start: u32, end: u32) -> Option<Self> {
         if start < end {
             Some(Self { start, end })
         } else {
             None
         }
     }
-    pub fn len(&self) -> usize {
+
+    /// Create a new `Range` from a start and end `Location`. The `start`
+    /// and `end` must be on the same line and `start` must be less than `end`.
+    pub fn new_line(start: Location, end: Location) -> Option<Self> {
+        if start.line != end.line {
+            return None;
+        }
+        return Self::new(start.index, end.index);
+    }
+
+    /// Get the length of the `Range`
+    pub fn len(&self) -> u32 {
         self.end - self.start
     }
 
@@ -121,7 +132,7 @@ mod token_map {
 
     #[derive(Debug, Default)]
     pub struct TokenMap<T: Clone> {
-        pub(crate) line_map: BTreeMap<usize, BTreeMap<Range, T>>,
+        pub(crate) line_map: BTreeMap<u32, BTreeMap<Range, T>>,
     }
     impl<T: Clone> TokenMap<T> {
         // Create a new instance of a TokenMap.
@@ -267,18 +278,15 @@ mod token_map {
 
         /// Get an iterator for the specified `line`. Returns `None` if there
         /// are not any tokens for the specified `line`.
-        pub fn line_iter(
-            &self,
-            line: usize,
-        ) -> Option<std::collections::btree_map::Iter<Range, T>> {
+        pub fn line_iter(&self, line: u32) -> Option<std::collections::btree_map::Iter<Range, T>> {
             let current_line = self.line_map.get(&line)?;
             Some(current_line.iter())
         }
     }
 
     pub struct TokenMapIterator<'a, T: Clone> {
-        line_iter: std::collections::btree_map::Iter<'a, usize, BTreeMap<Range, T>>,
-        current_line: Option<(&'a usize, &'a BTreeMap<Range, T>)>,
+        line_iter: std::collections::btree_map::Iter<'a, u32, BTreeMap<Range, T>>,
+        current_line: Option<(&'a u32, &'a BTreeMap<Range, T>)>,
         token_iter: Option<std::collections::btree_map::Iter<'a, Range, T>>,
     }
 
@@ -298,7 +306,7 @@ mod token_map {
         }
     }
     impl<'a, T: Clone> Iterator for TokenMapIterator<'a, T> {
-        type Item = (&'a usize, &'a Range, &'a T);
+        type Item = (&'a u32, &'a Range, &'a T);
 
         fn next(&mut self) -> Option<Self::Item> {
             let current_line = match self.current_line {
@@ -331,7 +339,7 @@ mod token_map {
 
     pub struct RelativeTokenMapIterator<'a, T: Clone> {
         iter: TokenMapIterator<'a, T>,
-        previous_token: Option<(&'a usize, &'a Range, &'a T)>,
+        previous_token: Option<(&'a u32, &'a Range, &'a T)>,
     }
 
     impl<'a, T: Clone> RelativeTokenMapIterator<'a, T> {
@@ -344,9 +352,9 @@ mod token_map {
     }
     #[derive(Debug, Clone)]
     pub struct RelativeToken<'a, T: Clone> {
-        pub delta_start: usize,
-        pub delta_line: usize,
-        pub length: usize,
+        pub delta_start: u32,
+        pub delta_line: u32,
+        pub length: u32,
         pub token: &'a T,
     }
 

@@ -122,7 +122,10 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 
     #[inline]
     pub(crate) fn get_location(&self, index: usize) -> Location {
-        Location::new(self.line_number, max(index - self.char_count, 0))
+        Location::new(
+            self.line_number as u32,
+            max(index - self.char_count, 0) as u32,
+        )
     }
 
     #[inline]
@@ -994,9 +997,9 @@ mod tests {
         let iter = lexer.next();
         assert_eq!(
             (
-                Location::new(0, input.len() - 1),
+                Location::new(0, (input.len() - 1) as u32),
                 Token::EOL,
-                Location::new(0, input.len() - 1)
+                Location::new(0, (input.len() - 1) as u32)
             ),
             iter.unwrap().unwrap()
         );
@@ -1029,9 +1032,9 @@ mod tests {
         let iter = lexer.next();
         assert_eq!(
             (
-                Location::new(0, input.len() - 1),
+                Location::new(0, (input.len() - 1) as u32),
                 Token::EOL,
-                Location::new(0, input.len() - 1)
+                Location::new(0, (input.len() - 1) as u32),
             ),
             iter.unwrap().unwrap()
         );

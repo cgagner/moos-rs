@@ -73,7 +73,7 @@ pub struct Lexer<'input, 'listen> {
     >,
     input: &'input str,
     previous_index: Option<usize>,
-    line_number: usize,
+    line_number: u32,
     char_count: usize,
     start_of_line: bool,
     found_assign_op: bool,
@@ -120,7 +120,10 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 
     #[inline]
     pub(crate) fn get_location(&self, index: usize) -> Location {
-        Location::new(self.line_number, max(index - self.char_count, 0))
+        Location::new(
+            self.line_number as u32,
+            max(index - self.char_count, 0) as u32,
+        )
     }
 
     #[inline]

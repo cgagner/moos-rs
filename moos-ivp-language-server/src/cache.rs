@@ -186,12 +186,12 @@ impl Document {
                         let d = Diagnostic::new(
                             lsp_types::Range {
                                 start: lsp_types::Position {
-                                    line: error.loc_start.line as u32,
-                                    character: error.loc_start.index as u32,
+                                    line: error.loc_start.line,
+                                    character: error.loc_start.index,
                                 },
                                 end: lsp_types::Position {
-                                    line: error.loc_end.line as u32,
-                                    character: error.loc_end.index as u32,
+                                    line: error.loc_end.line,
+                                    character: error.loc_end.index,
                                 },
                             },
                             Some(DiagnosticSeverity::ERROR),
@@ -212,12 +212,12 @@ impl Document {
                     let d = Diagnostic::new(
                         lsp_types::Range {
                             start: lsp_types::Position {
-                                line: loc_start.line as u32,
-                                character: loc_start.index as u32,
+                                line: loc_start.line,
+                                character: loc_start.index,
                             },
                             end: lsp_types::Position {
-                                line: loc_end.line as u32,
-                                character: loc_end.index as u32,
+                                line: loc_end.line,
+                                character: loc_end.index,
                             },
                         },
                         Some(DiagnosticSeverity::ERROR),
@@ -242,9 +242,9 @@ impl Document {
             .relative_iter()
             .for_each(|token| {
                 tokens.data.push(SemanticToken {
-                    delta_line: token.delta_line as u32,
-                    delta_start: token.delta_start as u32,
-                    length: token.length as u32,
+                    delta_line: token.delta_line,
+                    delta_start: token.delta_start,
+                    length: token.length,
                     token_type: token.token.token_type,
                     token_modifiers_bitset: token.token.token_modifiers,
                 });
@@ -376,12 +376,12 @@ impl TokenListener for TokenCollector {
                 let d = Diagnostic::new(
                     lsp_types::Range {
                         start: lsp_types::Position {
-                            line: start_loc.line as u32,
-                            character: start_loc.index as u32,
+                            line: start_loc.line,
+                            character: start_loc.index,
                         },
                         end: lsp_types::Position {
-                            line: end_loc.line as u32,
-                            character: end_loc.index as u32,
+                            line: end_loc.line,
+                            character: end_loc.index,
                         },
                     },
                     Some(DiagnosticSeverity::ERROR),
@@ -416,12 +416,12 @@ impl TokenListener for TokenCollector {
                 let d = Diagnostic::new(
                     lsp_types::Range {
                         start: lsp_types::Position {
-                            line: start_loc.line as u32,
-                            character: start_loc.index as u32,
+                            line: start_loc.line,
+                            character: start_loc.index,
                         },
                         end: lsp_types::Position {
-                            line: end_loc.line as u32,
-                            character: end_loc.index as u32,
+                            line: end_loc.line,
+                            character: end_loc.index,
                         },
                     },
                     Some(DiagnosticSeverity::ERROR),
@@ -446,12 +446,12 @@ impl TokenListener for TokenCollector {
                 let d = Diagnostic::new(
                     lsp_types::Range {
                         start: lsp_types::Position {
-                            line: start_loc.line as u32,
-                            character: start_loc.index as u32,
+                            line: start_loc.line,
+                            character: start_loc.index,
                         },
                         end: lsp_types::Position {
-                            line: end_loc.line as u32,
-                            character: end_loc.index as u32,
+                            line: end_loc.line,
+                            character: end_loc.index,
                         },
                     },
                     Some(DiagnosticSeverity::ERROR),

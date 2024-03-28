@@ -45,7 +45,7 @@ impl<'input> MoosParseError<'input> {
             loc_start,
             loc_end: Location {
                 line: loc_start.line,
-                index: loc_start.index + macro_name.len(),
+                index: loc_start.index + macro_name.len() as u32,
             },
         }
     }
