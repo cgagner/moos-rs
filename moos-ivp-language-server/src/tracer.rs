@@ -11,7 +11,8 @@ impl Tracer {
         let filter = EnvFilter::builder()
             .with_default_directive(LevelFilter::INFO.into())
             .from_env()?
-            .add_directive("moos_ivp_language_server=debug".parse()?);
+            .add_directive("moos_ivp_language_server=debug".parse()?)
+            .add_directive("moos_parser=trace".parse()?);
         // TODO: This should eventually allow logging to a file if an
         // environment variable is set.
         let writer = BoxMakeWriter::new(std::io::stderr);

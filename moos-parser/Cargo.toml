@@ -10,7 +10,12 @@ build = "build.rs"
 regex = "1"
 lalrpop-util = {version = "0.19.12", features = ["lexer"]}
 log = "0.4"
+tracing = "0.1.40"
 
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+anyhow = "1.0.81"
 
 [build-dependencies]
 lalrpop = {version = "0.19.12", features = ["lexer"]}

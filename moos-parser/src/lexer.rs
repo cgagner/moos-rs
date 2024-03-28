@@ -1,5 +1,6 @@
 use crate::error::MoosParseError;
 
+use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 use core::cmp::max;
 use core::str;
 use core::str::{CharIndices, ParseBoolError};
@@ -7,6 +8,7 @@ use lalrpop_util::ErrorRecovery;
 use std::collections::{HashMap, VecDeque};
 use std::iter::{Chain, Repeat, Skip};
 use std::num::{ParseFloatError, ParseIntError};
+use tracing::{debug, trace};
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
 pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
@@ -15,27 +17,6 @@ pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosPars
 pub struct State<'input> {
     pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>,
     pub defines: HashMap<String, String>,
-}
-
-// The end index is non inclusive.. I.E. it is up to, but not including the
-// end index. A token that is of size one, should have an end index one larger
-// than the start index.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Location {
-    pub line: usize,
-    pub index: usize,
-}
-
-impl Location {
-    pub fn new(line: usize, index: usize) -> Self {
-        Location { line, index }
-    }
-}
-
-impl Default for Location {
-    fn default() -> Self {
-        Self { line: 0, index: 0 }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -205,9 +186,11 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             } else {
                 unhandled
             };
-            println!(
+            trace!(
                 "get_unhandled_string: '{}' - trim_start: {} - trim_end: {}",
-                unhandled, self.trim_start, self.trim_end,
+                unhandled,
+                self.trim_start,
+                self.trim_end,
             );
 
             return if unhandled.is_empty() {
@@ -239,21 +222,21 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         self.trim_start = false;
 
         if self.found_assign_op {
-            if let Ok(value) = Self::scan_integer(line) {
+            if let Ok(value) = scan_integer(line) {
                 self.push_token(
                     line_index,
                     Token::Integer(value, line),
                     line_index + line.len(),
                 );
                 return;
-            } else if let Ok(value) = Self::scan_float(line) {
+            } else if let Ok(value) = scan_float(line) {
                 self.push_token(
                     line_index,
                     Token::Float(value, line),
                     line_index + line.len(),
                 );
                 return;
-            } else if let Ok(value) = Self::scan_bool(line) {
+            } else if let Ok(value) = scan_bool(line) {
                 self.push_token(
                     line_index,
                     Token::Boolean(value, line),
@@ -270,53 +253,16 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         );
     }
 
-    /// Scan a string for an integer. This method handles regular integers
-    /// as well as integers encoded as hex, binary, or octal.
-    fn scan_integer(s: &str) -> Result<i64, ParseIntError> {
-        let mut chars = s.chars().peekable();
-
-        if s.len() > 2 && chars.nth(0).unwrap_or('\0') == '0' {
-            match chars.peek() {
-                Some('x') | Some('X') => return i64::from_str_radix(&s[2..], 16),
-                Some('b') | Some('B') => return i64::from_str_radix(&s[2..], 2),
-                Some('o') | Some('O') => return i64::from_str_radix(&s[2..], 8),
-                _ => {}
-            }
-        }
-        s.parse::<i64>()
-    }
-
-    /// Scan a string for a float.
-    fn scan_float(s: &str) -> Result<f64, ParseFloatError> {
-        if s.eq_ignore_ascii_case("nan") {
-            println!("scan_float: {}", s);
-            Ok(f64::NAN)
-        } else {
-            s.parse::<f64>()
-        }
-    }
-
-    // Scan a string for a boolean.
-    fn scan_bool(s: &str) -> Result<bool, ()> {
-        println!("Scanning for boolean: {}", s);
-        if s.eq_ignore_ascii_case("true") {
-            Ok(true)
-        } else if s.eq_ignore_ascii_case("false") {
-            Ok(false)
-        } else {
-            Err(())
-        }
-    }
-
     #[inline]
     fn scan_keywords_and_values(&mut self, line: &'input str, line_index: usize) {
         // Sanity check that the input is at least 1 characters
         if line.len() < 1 {
             return;
         }
-        println!(
+        trace!(
             "Scanning for variables: {:?}, start_of_line: {:?}",
-            line, self.start_of_line
+            line,
+            self.start_of_line
         );
 
         let (input, line_index) = if self.start_of_line {
@@ -341,7 +287,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                 // Check for keywords
                 if let Some(first_word) = line.split_whitespace().next() {
                     let first_word_lower = first_word.to_lowercase();
-                    println!(
+                    trace!(
                         "First Word: {:?}, {} {}",
                         first_word,
                         line_index,
@@ -373,7 +319,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 
         // Start of variable not found
         if !input.is_empty() {
-            println!("Last string: '{:?}'", input);
+            trace!("Last string: '{:?}'", input);
             self.scan_value(input, line_index);
         }
     }
@@ -914,7 +860,7 @@ mod tests {
         error::MoosParseError,
         lexer::{Lexer, Location, State, Token, TokenListener},
     };
-    use log;
+    use tracing::{debug, trace};
 
     #[test]
     pub fn test_tokenize_variable() {
@@ -1012,9 +958,9 @@ mod tests {
             Token::CurlyClose,
         ];
         check_tokens(&mut lexer, expected_tokens);
-        println!("Finihsed checking tokens....");
+        trace!("Finihsed checking tokens....");
         for t in lexer {
-            println!("Token: {:?}", t);
+            trace!("Token: {:?}", t);
         }
     }
 
@@ -1143,7 +1089,7 @@ mod tests {
         check_tokens(&mut lexer, expected_tokens);
 
         for t in lexer {
-            println!("Token: {:?}", t);
+            trace!("Token: {:?}", t);
         }
     }
 
@@ -1179,10 +1125,10 @@ mod tests {
     }
 
     fn check_tokens(lexer: &mut Lexer, expected_tokens: Vec<Token>) {
-        println!("check_tokens!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        trace!("check_tokens!!!!!!!!!!!!!!!!!!!!!!!!!!");
         let mut i = 0;
         while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("Token: {:?}", token);
+            trace!("Token: {:?}", token);
             if i < expected_tokens.len() {
                 assert_eq!(token, expected_tokens[i]);
                 i += 1;
@@ -1191,86 +1137,6 @@ mod tests {
             }
         }
         assert_eq!(i, expected_tokens.len());
-    }
-
-    #[test]
-    fn test_scan_integer() {
-        // Regular Integer
-        assert_eq!(Lexer::scan_integer("12345"), Ok(12345));
-        // Another Integer
-        assert_eq!(Lexer::scan_integer("-12345"), Ok(-12345));
-
-        // Hex Integer
-        assert_eq!(Lexer::scan_integer("0xffff"), Ok(65535));
-        assert_eq!(Lexer::scan_integer("0Xffff"), Ok(65535));
-        assert_eq!(Lexer::scan_integer("0xFFFF"), Ok(65535));
-        assert_eq!(Lexer::scan_integer("0XFFFF"), Ok(65535));
-
-        // Binary Integer
-        assert_eq!(Lexer::scan_integer("0b11111111"), Ok(255));
-        assert_eq!(Lexer::scan_integer("0B11111111"), Ok(255));
-
-        // Octal
-        assert_eq!(Lexer::scan_integer("0o10"), Ok(8));
-        assert_eq!(Lexer::scan_integer("0O10"), Ok(8));
-
-        assert_eq!(Lexer::scan_integer("102d"), "102d".parse::<i64>());
-        assert!(Lexer::scan_integer("102d").is_err());
-    }
-
-    #[test]
-    fn test_scan_float() {
-        let approx_eq = |lhs: f64, rhs: f64, delta: f64| -> bool {
-            if lhs.is_finite() && rhs.is_finite() {
-                (lhs - rhs).abs() <= delta
-            } else if lhs.is_nan() && rhs.is_nan() {
-                true
-            } else {
-                lhs == rhs
-            }
-        };
-        assert!(approx_eq(
-            Lexer::scan_float("12341.0").unwrap(),
-            12341.0,
-            0.0001
-        ));
-        assert!(approx_eq(
-            Lexer::scan_float("-12341.0").unwrap(),
-            -12341.0,
-            0.0001
-        ));
-        assert!(approx_eq(
-            Lexer::scan_float("2.23e3").unwrap(),
-            2230.0,
-            0.0001
-        ));
-
-        assert!(approx_eq(
-            Lexer::scan_float("-inf").unwrap(),
-            f64::NEG_INFINITY,
-            0.0001
-        ));
-        assert!(approx_eq(
-            Lexer::scan_float("inf").unwrap(),
-            f64::INFINITY,
-            0.0001
-        ));
-        assert!(approx_eq(
-            Lexer::scan_float("nan").unwrap(),
-            f64::NAN,
-            0.0001
-        ));
-    }
-
-    #[test]
-    fn test_scan_bool() {
-        assert_eq!(Lexer::scan_bool("true"), Ok(true));
-        assert_eq!(Lexer::scan_bool("True"), Ok(true));
-        assert_eq!(Lexer::scan_bool("TRUE"), Ok(true));
-
-        assert_eq!(Lexer::scan_bool("false"), Ok(false));
-        assert_eq!(Lexer::scan_bool("False"), Ok(false));
-        assert_eq!(Lexer::scan_bool("FALSE"), Ok(false));
     }
 
     #[test]
@@ -1388,7 +1254,7 @@ mod tests {
 
         let mut lexer = Lexer::new(input);
         while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("test_scan_macro Token: {:?}", token);
+            trace!("test_scan_macro Token: {:?}", token);
         }
 
         let mut lexer = Lexer::new(input);
@@ -1582,19 +1448,19 @@ mod tests {
         lexer.add_listener(&mut token_collector);
 
         while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("Parser Token: {:?}", token);
+            trace!("Parser Token: {:?}", token);
         }
 
         lexer = Lexer::new(input);
         let mut state = State::default();
         let result = moos::LinesParser::new().parse(&mut state, input, lexer);
         if let Err(e) = &result {
-            println!("Lexer Error: {:?}", e);
+            trace!("Lexer Error: {:?}", e);
         }
         assert!(result.is_ok());
-        println!("Tokens: ");
+        trace!("Tokens: ");
         for t in &token_collector.tokens {
-            println!("  {:?}", t);
+            trace!("  {:?}", t);
         }
     }
 

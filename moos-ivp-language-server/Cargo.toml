@@ -11,6 +11,7 @@ chrono = "0.4.35"
 lsp-server = "0.7.6"
 lsp-server-derive-macro = { version = "0.1.0", path = "crates/lsp-server-derive-macro" }
 lsp-types = "0.95.1"
+moos-parser = {path = "../moos-parser"}
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.114"
 serde_yaml = "0.9.33"

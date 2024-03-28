@@ -45,7 +45,7 @@
 #![allow(clippy::print_stderr)]
 
 mod cache;
-mod handle;
+mod handler;
 mod lsp;
 mod tracer;
 mod trees;
@@ -56,18 +56,20 @@ use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
     notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
     request::{Completion, GotoDefinition},
-    GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    ClientCapabilities, GotoDefinitionResponse, InitializeParams, OneOf, SemanticTokenModifier,
+    SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 
-use tracing::debug as mlog;
+use tracing::trace as mlog;
 use tracing::{
     debug, debug_span, error, error_span, info, info_span, trace, trace_span, warn, warn_span,
 };
 
 use lsp_server_derive_macro::{notification_handler, request_handler};
 
-use crate::handle::{handle_notification, handle_request};
+use crate::handler::Handler;
 
 // Declare the Requests that we are going to handle.
 #[request_handler]
@@ -94,17 +96,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // TODO: Need to add support for --port and --pipe
     let (connection, io_threads) = Connection::stdio();
 
-    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    let server_capabilities = serde_json::to_value(&ServerCapabilities {
-        definition_provider: Some(OneOf::Left(true)),
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-        ..Default::default()
-    })?;
-
-    // TODO: Handle client capabilities
-
-    let initialization_params = match connection.initialize(server_capabilities) {
-        Ok(it) => it,
+    // Run the server
+    let (id, params) = match connection.initialize_start() {
+        Ok((id, params)) => (id, params),
         Err(e) => {
             if e.channel_is_disconnected() {
                 io_threads.join()?;
@@ -112,6 +106,80 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             return Err(e.into());
         }
     };
+    let initialization_params: InitializeParams = serde_json::from_value(params).unwrap();
+    // TODO: Do we want to customize the ServerCapabilities based on the ClientCapabilities
+    //let _client_capabilities: ClientCapabilities = initialization_params.capabilities.clone();
+
+    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
+
+    /*
+    ypes {
+        /// For tokens that represent a comment.
+        Comment = 0,
+        /// For tokens that represent a language keyword.
+        Keyword,
+        /// For identifiers that declare or reference a local or global variable.
+        Variable,
+        /// For tokens that represent a string literal.
+        String,
+        /// For tokens that represent a number literal.
+        Number,
+        /// For identifiers that declare a macro.
+        Macro,
+        /// For tokens that represent an operator
+        Operator,
+    }
+    */
+
+    let server_capabilities = ServerCapabilities {
+        definition_provider: Some(OneOf::Left(true)),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+        semantic_tokens_provider: Some(
+            SemanticTokensOptions {
+                legend: SemanticTokensLegend {
+                    token_types: vec![
+                        SemanticTokenType::COMMENT,
+                        SemanticTokenType::KEYWORD,
+                        SemanticTokenType::VARIABLE,
+                        SemanticTokenType::STRING,
+                        SemanticTokenType::NUMBER,
+                        SemanticTokenType::MACRO,
+                        SemanticTokenType::OPERATOR,
+                    ],
+                    token_modifiers: vec![
+                        SemanticTokenModifier::DECLARATION,
+                        SemanticTokenModifier::DOCUMENTATION,
+                        SemanticTokenModifier::DEPRECATED,
+                    ],
+                },
+                full: Some(SemanticTokensFullOptions::Bool(true)),
+                ..Default::default()
+            }
+            .into(),
+        ),
+        ..Default::default()
+    };
+
+    const NAME: &str = env!("CARGO_PKG_NAME");
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    let initialize_data = serde_json::json!({
+        "capabilities": server_capabilities,
+        "serverInfo": {
+            "name": NAME,
+            "version": VERSION
+        }
+    });
+
+    match connection.initialize_finish(id, initialize_data) {
+        Ok(()) => {}
+        Err(e) => {
+            if e.channel_is_disconnected() {
+                io_threads.join()?;
+            }
+            return Err(e.into());
+        }
+    }
+
     main_loop(connection, initialization_params)?;
     io_threads.join()?;
 
@@ -122,10 +190,16 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 
 fn main_loop(
     connection: Connection,
-    params: serde_json::Value,
+    params: InitializeParams,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
-    let _params: InitializeParams = serde_json::from_value(params)?;
+    let client_capabilities: ClientCapabilities = params.capabilities.clone();
+    debug!(
+        "Connected to client: {}",
+        serde_json::to_string_pretty(&client_capabilities).unwrap_or(String::new())
+    );
     info!("starting example main loop");
+
+    let mut handler = Handler::new(params);
     for msg in &connection.receiver {
         trace!("got msg: {msg:?}");
         match msg {
@@ -133,14 +207,17 @@ fn main_loop(
                 if connection.handle_shutdown(&request)? {
                     return Ok(());
                 }
-                handle_request(request);
+                if let Some(response) = handler.handle_request(request) {
+                    mlog!("Sending Response: {response:?}");
+                    connection.sender.send(Message::Response(response))?;
+                }
             }
             Message::Response(resp) => {
                 mlog!("got response: {resp:?}");
             }
             Message::Notification(notification) => {
                 mlog!("got notification: {notification:?}");
-                if let Err(e) = handle_notification(notification) {
+                if let Err(e) = handler.handle_notification(notification) {
                     error!("Failed to handle notification: {e:?}");
                 }
             }

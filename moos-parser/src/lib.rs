@@ -5,8 +5,10 @@ pub mod ast;
 pub mod error;
 pub mod helpers;
 pub mod lexer;
-pub mod parser;
+pub mod lexers;
+pub mod nsplug_lexer;
 pub(crate) mod nsplug_tree;
+pub mod parser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type Lexer<'input, 'listen> = lexer::Lexer<'input, 'listen>;
@@ -26,16 +28,32 @@ lalrpop_mod!(
 pub type LinesParser = moos::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type PlugParser = nsplug::DirectivesParser;
+pub type PlugParser = nsplug::LinesParser;
 
 #[cfg(test)]
 mod tests {
 
-    use crate::PlugParser;
+    use crate::{nsplug_lexer, PlugParser};
 
     #[test]
-    fn test_plug_parser() {
+    fn test_plug_parser() -> anyhow::Result<()> {
         use crate::PlugParser;
+
+        use tracing::level_filters::LevelFilter;
+        use tracing_subscriber::fmt::writer::BoxMakeWriter;
+        use tracing_subscriber::prelude::*;
+        use tracing_subscriber::{fmt, EnvFilter, Registry};
+        let filter = EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env()?
+            .add_directive("moos_parser=trace".parse()?);
+        let writer = BoxMakeWriter::new(std::io::stderr);
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_writer(writer)
+            .with_ansi(false)
+            .with_filter(filter);
+
+        Registry::default().with(fmt_layer).try_init()?;
 
         let input = r#"#include <test.plug>
         // Test Comment
@@ -102,12 +120,16 @@ mod tests {
 
         "#;
 
-        let mut start_of_file = true;
+        let input = "// This is a test\n#define FOO Appless // Comment \n\n\n\n";
 
-        let result = PlugParser::new().parse(&mut start_of_file, input);
+        let lexer = nsplug_lexer::Lexer::new(input);
+        let mut state = nsplug_lexer::State::default();
+        let result = PlugParser::new().parse(&mut state, input, lexer);
 
         println!("Result: {:?}", result);
 
         assert!(result.is_ok());
+
+        Ok(())
     }
 }

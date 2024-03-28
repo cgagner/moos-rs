@@ -1,6 +1,7 @@
 
 includes: 
   - base_types.yaml
+  # Intentionally does not exist
   - test.yaml
 
 types:
@@ -41,10 +42,10 @@ types:
 
  applications:
   - pExampleApp:
-    description: Viewer
+    description: Example application for viewing IvP data
     author: Joe Kerr
-    is_moos_app: true
-    supports_app_stream: false
+    type: application
+    creation_date: 2024-03-26
     members:
       - AppTick:
         description: How fast to run iterate

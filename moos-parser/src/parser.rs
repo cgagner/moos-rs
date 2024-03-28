@@ -159,8 +159,8 @@ mod tests {
         //     assert_eq!(
         //         lalrpop_util::ParseError::User {
         //             error: crate::error::MoosParseError::new_missing_new_line(
-        //                 crate::lexer::Location::new(2, 31),
-        //                 crate::lexer::Location::new(2, 32),
+        //                 crate::lexers::Location::new(2, 31),
+        //                 crate::lexers::Location::new(2, 32),
         //             ),
         //         },
         //         e,

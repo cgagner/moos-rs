@@ -1,6 +1,7 @@
 use core::cmp::max;
 use lsp_types::{Diagnostic, DiagnosticSeverity, SemanticToken};
 use moos_parser::lexer::{self, Token, TokenListener};
+use moos_parser::lexers;
 use std::collections::HashSet;
 
 /*
@@ -154,8 +155,8 @@ impl<'c> TokenListener for MoosTokenListener<'c> {
     fn handle_token(
         &mut self,
         token: &lexer::Token,
-        start_loc: &lexer::Location,
-        end_loc: &lexer::Location,
+        start_loc: &lexers::Location,
+        end_loc: &lexers::Location,
     ) {
         // This method seems flawed.
         // PartialQuotes and PartialVariables seems to break

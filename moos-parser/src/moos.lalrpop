@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use crate::helpers::remove_first_last;
-use crate::lexer::{Location, State, Token};
+use crate::lexers::Location;
+use crate::lexer::{State, Token};
 use crate::parser::{MacroDefinition, MacroCondition, MacroType, Line};
 use crate::error::MoosParseError;
 use lalrpop_util::ErrorRecovery;
@@ -199,7 +200,7 @@ UnknownMacro: Line<'input> = {
 // ---------------------------------------------------------------------------
 
 extern {  
-    type Location = crate::lexer::Location;
+    type Location = crate::lexers::Location;
     type Error = MoosParseError<'input>;
     
     enum Token<'input> {

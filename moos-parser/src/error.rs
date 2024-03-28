@@ -1,4 +1,4 @@
-use crate::lexer::Location;
+use crate::lexers::Location;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct MoosParseError<'input> {
