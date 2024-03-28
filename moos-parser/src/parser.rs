@@ -117,6 +117,8 @@ pub enum Line<'input> {
     BlockEnd(Option<&'input str>),
     Assignment(Vec<Value<'input>>, Vec<Value<'input>>, Option<&'input str>),
     Macro(MacroType<'input>, Option<&'input str>),
+    PlugVariable(&'input str),
+    PlugUpperVariable(&'input str),
     Error,
     EndOfLine,
 }

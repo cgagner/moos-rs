@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
-use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokens, Url};
+use lsp_types::{
+    Diagnostic, DiagnosticSeverity, SemanticToken, SemanticTokenModifier, SemanticTokens, Url,
+};
 use moos_parser::{
+    error::MoosParseErrorKind,
     lexer::State,
-    lexers::{self, TokenMap},
+    lexers::{self, Location, TokenMap},
     nsplug_lexer::{self, Token, TokenListener},
-    Lexer, LinesParser, PlugParser,
+    Lexer, LinesParser, ParseError, PlugParser,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
@@ -127,7 +130,7 @@ impl Project {
 
     /// Creates or updates a `Document` with the specified `uri` and `text`
     /// and updates the cache for the document.
-    pub fn insert(&mut self, uri: &Url, text: &str) {
+    pub fn insert(&mut self, uri: &Url, text: &str) -> &Document {
         let document = self
             .documents
             .entry(uri.clone())
@@ -138,6 +141,7 @@ impl Project {
         let mut text = text.to_string() + "\n";
         document.text = text;
         document.refresh();
+        return document;
     }
 }
 
@@ -147,6 +151,7 @@ pub struct Document {
     text: String,
     file_type: FileType,
     token_collector: TokenCollector,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl Document {
@@ -156,6 +161,7 @@ impl Document {
             text,
             file_type: FileType::Other,
             token_collector: TokenCollector::new(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -169,11 +175,63 @@ impl Document {
         let mut state = moos_parser::nsplug_lexer::State::default();
         let result = PlugParser::new().parse(&mut state, &self.text, lexer);
 
-        // let lexer = Lexer::new(&self.text);
-        // let mut state = State::default();
-        // let results = LinesParser::new().parse(&mut state, &self.text, lexer);
-
-        info!("Plug Parser Results: {result:?}");
+        let iter = self.diagnostics.iter();
+        // TODO: Add new method to handle converting errors into diagnostics
+        // TODO: Only create diagnostics if the client supports diagnostics
+        for e in state.errors {
+            match e.error {
+                ParseError::User { error } => match error.kind {
+                    MoosParseErrorKind::InvalidConfigBlock => {}
+                    MoosParseErrorKind::MissingNewLine => {
+                        let d = Diagnostic::new(
+                            lsp_types::Range {
+                                start: lsp_types::Position {
+                                    line: error.loc_start.line as u32,
+                                    character: error.loc_start.index as u32,
+                                },
+                                end: lsp_types::Position {
+                                    line: error.loc_end.line as u32,
+                                    character: error.loc_end.index as u32,
+                                },
+                            },
+                            Some(DiagnosticSeverity::ERROR),
+                            None,
+                            None,
+                            String::from("Missing new line after application name."),
+                            None,
+                            None,
+                        );
+                        self.diagnostics.push(d);
+                    }
+                    MoosParseErrorKind::MissingTrailing(c) => {}
+                    MoosParseErrorKind::UnexpectedSymbol(c) => {}
+                    _ => {}
+                },
+                ParseError::UnrecognizedToken { token, expected } => {
+                    let (loc_start, token, loc_end) = token;
+                    let d = Diagnostic::new(
+                        lsp_types::Range {
+                            start: lsp_types::Position {
+                                line: loc_start.line as u32,
+                                character: loc_start.index as u32,
+                            },
+                            end: lsp_types::Position {
+                                line: loc_end.line as u32,
+                                character: loc_end.index as u32,
+                            },
+                        },
+                        Some(DiagnosticSeverity::ERROR),
+                        None,
+                        None,
+                        format!("Unrecognized token: {:?}. Expected: {:?}", token, expected),
+                        None,
+                        None,
+                    );
+                    self.diagnostics.push(d);
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn get_semantic_tokens(&self) -> SemanticTokens {
@@ -194,8 +252,10 @@ impl Document {
 
         return tokens;
     }
+
     pub fn clear(&mut self) {
         self.token_collector.semantic_tokens.clear();
+        self.diagnostics.clear();
     }
 }
 
@@ -225,7 +285,7 @@ impl TokenListener for TokenCollector {
                 token_type: TokenTypes::Comment as u32,
                 token_modifiers: 0,
             }),
-            Token::PlugVariable((_name)) | Token::PlugUpperVariable(_name) => {
+            Token::PlugVariable(_name) | Token::PlugUpperVariable(_name) => {
                 Some(SemanticTokenInfo {
                     token_type: TokenTypes::Variable as u32,
                     token_modifiers: 0,
@@ -243,6 +303,14 @@ impl TokenListener for TokenCollector {
             | Token::MacroIfNotDef
             | Token::MacroInclude => Some(SemanticTokenInfo {
                 token_type: TokenTypes::Macro as u32,
+                token_modifiers: 0,
+            }),
+            Token::Quote(_value) => Some(SemanticTokenInfo {
+                token_type: TokenTypes::String as u32,
+                token_modifiers: 0,
+            }),
+            Token::PartialQuote(_value, _c) => Some(SemanticTokenInfo {
+                token_type: TokenTypes::String as u32,
                 token_modifiers: 0,
             }),
             /*
@@ -418,23 +486,6 @@ impl TokenListener for TokenCollector {
                 added = true;
             }
             Token::DefineKeyword => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Macro as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::MacroDefine
-            | Token::MacroElse
-            | Token::MacroElseIfDef
-            | Token::MacroEndIf
-            | Token::MacroIfDef
-            | Token::MacroIfNotDef
-            | Token::MacroInclude => {
-                log::error!("Found macro {:?}", token);
                 self.cache.semantic_tokens.push(SemanticToken {
                     delta_line: delta_line,
                     delta_start: delta_index,

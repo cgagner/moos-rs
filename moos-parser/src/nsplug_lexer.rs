@@ -1,3 +1,15 @@
+// TODO: Need to handle partial variable inside of partial quotes.
+// This is a bit trickier because we need to push the tokens into the queue
+// in the correct order so they appear in the parser correctly. However,
+// The token listener needs these tokens in the opposite order.
+// E.G.
+//
+// TODO: Variables cannot contain spaces. This is because of the way the
+// #define macro is handled.
+//
+// The token listener approach is flawed. It does not take semantics into
+// account.
+
 use crate::error::MoosParseError;
 use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 
@@ -42,6 +54,7 @@ pub enum Token<'input> {
     UnknownMacro(&'input str),
     OrOperator,
     AndOperator,
+    Space,
     /// End of Line
     EOL,
     /// End of File
@@ -145,7 +158,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         if let Some(prev_i) = self.previous_index {
             let start_index = if auto_trim && self.trim_start {
                 if let Some(index_after_whitespace) =
-                    self.input[prev_i..index].find(|c| c != ' ' && c != '\t' && c != '\r')
+                    self.input[prev_i..index].find(|c| c != ' ' && c != '\t')
                 {
                     prev_i + index_after_whitespace
                 } else {
@@ -171,12 +184,6 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             } else {
                 unhandled
             };
-            trace!(
-                "get_unhandled_string: '{}' - trim_start: {} - trim_end: {}",
-                unhandled,
-                self.trim_start,
-                self.trim_end,
-            );
 
             return if unhandled.is_empty() {
                 None
@@ -185,6 +192,36 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             };
         }
         None
+    }
+
+    /**
+     * Drop the unhandled string from an the previous index to the current index
+     * of a string.
+     *
+     * # Parameters:
+     * * `index`: Current index
+     */
+    #[inline]
+    fn drop_unhandled_string(&mut self, index: usize) -> Option<(usize, &'input str)> {
+        let result = if let Some(prev_i) = self.previous_index {
+            let start_index = prev_i;
+            let unhandled = &self.input[start_index..index];
+            if unhandled.is_empty() {
+                None
+            } else {
+                Some((start_index, unhandled))
+            }
+        } else {
+            None
+        };
+
+        if index > 0 {
+            self.previous_index = self.get_safe_index(index);
+        } else {
+            self.previous_index = None;
+        }
+
+        return result;
     }
 
     #[inline]
@@ -305,17 +342,19 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                 return;
             }
         }
-        // [endif|else] - [comment]
+        // [endif|else] - [comment] <-- Must have a space after endif
         // include [quote|string|variable] [comment]
         // define [key|variable] [value|variable]
         // [ifdef|elseifdef] [condition] [|| &&] [condition]
         // ifndef [key|variable]
         // [condition] => [string|quote|variable]
 
+        // TODO: We probably should remove parsing comments
+
         // Find the macro by looking for the next whitespace, newline, or comment
         let (token, next_index) = if let Some(((ii, cc), (_iii, _ccc))) =
             self.iter.find(|&((_ii, cc), (_iii, ccc))| {
-                cc == ' ' || cc == '\t'  || cc == '\r'  // Whitespace
+                cc == ' ' || cc == '\t'  // Whitespace
                 || cc == '\n'  // Newline
                 || (cc == '/' && ccc == '/') // Comment
             }) {
@@ -359,16 +398,16 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             c == '\n'
                 || c == '"'
                 || (c == '=')
-                || (has_whitespace && (c == ' ' || c == '\t' || c == '\r')) // Whitespace
+                || (has_whitespace && (c == ' ' || c == '\t')) // Whitespace
                 || (c == '/' && cc == '/') // Comment
-                || (c == '$' && (cc == '{' || cc == '(')) // Env or Plug variable
+                || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (has_conditions && c == '|' && cc == '|') // Or operator
                 || (has_conditions && c == '&' && cc == '&' ) // And operator
         }) {
             match c {
                 '\n' => {
-                    self.tokenize_new_line(i);
+                    self.tokenize_new_line(i, false);
                     return;
                 }
                 '/' => {
@@ -376,8 +415,24 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                     return;
                 }
                 '"' => self.tokenize_quote(i),
-                c if (c == '$' && (cc == '{' || cc == '(')) => self.tokenize_variable(i, c, cc),
-                c if (c == '%' && cc == '(') => self.tokenize_upper_variable(i),
+                c if (c == '$' && cc == '(') => {
+                    self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugVariable(text)
+                        } else {
+                            Token::PartialPlugVariable(text)
+                        }
+                    })
+                }
+                c if (c == '%' && cc == '(') => {
+                    self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugUpperVariable(text)
+                        } else {
+                            Token::PartialPlugUpperVariable(text)
+                        }
+                    })
+                }
                 '|' => {
                     self.trim_end = true;
                     self.tokenize_or_operator(i);
@@ -392,7 +447,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                     self.trim_start = true;
                     self.found_assign_op = false;
                 }
-                ' ' | '\t' | '\r' => {
+                ' ' | '\t' => {
                     self.found_assign_op = true; // Enables parsing primitives
                     self.trim_end = true;
                     if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
@@ -403,6 +458,9 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                         self.previous_index = self.get_safe_index(i + 1);
                     }
                     self.trim_start = true;
+
+                    self.push_token(i, Token::Space, i + 1);
+                    self.previous_index = self.get_safe_index(i + 1);
                 }
                 _ => {}
             }
@@ -419,11 +477,11 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         }
     }
 
-    fn tokenize_new_line(&mut self, i: usize) {
+    fn tokenize_new_line(&mut self, i: usize, drop_unhandled: bool) {
         // Trim up to the new line
         self.trim_end = true;
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
-            if !unhandled.is_empty() {
+            if !unhandled.is_empty() && !drop_unhandled {
                 self.scan_keywords_and_values(unhandled, prev_i);
             }
         }
@@ -439,12 +497,10 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                 self.trim_start = false;
             }
         }
-        let mut comment_index: Option<usize> = None;
-        // Find the matching quote mark
-        while let Some(((ii, cc), (_iii, _ccc))) = self
-            .iter
-            .find(|&((_ii, cc), (_iii, ccc))| cc == '"' || cc == '\n' || (cc == '/' && ccc == '/'))
-        {
+
+        while let Some(((ii, cc), (_iii, ccc))) = self.iter.find(|&((_ii, cc), (_iii, ccc))| {
+            cc == '"' || cc == '\n' || (cc == '$' && ccc == '(') || (cc == '%' && ccc == '(')
+        }) {
             match cc {
                 '"' => {
                     self.push_token(i, Token::Quote(&self.input[i + 1..ii]), ii + 1);
@@ -453,52 +509,40 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
                     trace!("Found quote: {}", &self.input[i + 1..ii]);
                     return;
                 }
+                // Handle Variables inside of quotes
+                cc if (cc == '$' && ccc == '(') => {
+                    self.tokenize_variable(ii, cc, ccc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugVariable(text)
+                        } else {
+                            Token::PartialPlugVariable(text)
+                        }
+                    })
+                }
+                cc if (cc == '%' && ccc == '(') => {
+                    self.tokenize_variable(ii, cc, ccc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugUpperVariable(text)
+                        } else {
+                            Token::PartialPlugUpperVariable(text)
+                        }
+                    })
+                }
                 '\n' => {
-                    if let Some(comment_index) = comment_index {
-                        self.push_token(
-                            i,
-                            Token::PartialQuote(&self.input[i + 1..comment_index], '"'),
-                            comment_index,
-                        );
-                        self.push_token(
-                            comment_index,
-                            Token::Comment(&self.input[comment_index + 2..ii].trim()),
-                            ii,
-                        );
-                    } else {
-                        self.push_token(i, Token::PartialQuote(&self.input[i + 1..ii], '"'), ii);
-                    }
+                    self.push_token(i, Token::PartialQuote(&self.input[i + 1..ii], '"'), ii);
                     self._handle_new_line(ii);
                     return;
-                }
-                '/' => {
-                    // TODO: Need to handle partial quotes and comments
-                    comment_index = Some(ii);
                 }
                 _ => {}
             }
         }
 
         // Reached the end of the input
-
-        if let Some(comment_index) = comment_index {
-            self.push_token(
-                i,
-                Token::PartialQuote(&self.input[i + 1..comment_index], '"'),
-                comment_index,
-            );
-            self.push_token(
-                comment_index,
-                Token::Comment(&self.input[comment_index + 2..].trim()),
-                self.input.len(),
-            );
-        } else {
-            self.push_token(
-                i,
-                Token::PartialQuote(&self.input[i + 1..], '"'),
-                self.input.len(),
-            );
-        }
+        self.push_token(
+            i,
+            Token::PartialQuote(&self.input[i + 1..], '"'),
+            self.input.len(),
+        );
 
         self.previous_index = None;
     }
@@ -533,10 +577,13 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         }
     }
 
-    fn tokenize_variable(&mut self, i: usize, _c: char, cc: char) {
-        // TODO: Should this handle quotes inside a variable?
-        // E.G. ${"Test//Comment"}
-
+    fn tokenize_variable<F: Fn(&'input str, bool) -> Token<'input>>(
+        &mut self,
+        i: usize,
+        _c: char,
+        _cc: char,
+        create_variable_func: F,
+    ) {
         // Check for unhandled strings
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
@@ -547,26 +594,20 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         }
         // Find the matching end brace or paren or end of line
 
-        let mut found_quote = false;
-        while let Some(((ii, cc), (_iii, _ccc))) = self.iter.find(|&((_ii, cc), (_iii, ccc))| {
-            cc == '\n' || cc == ')' || cc == '"' || (!found_quote && cc == '/' && ccc == '/')
-        }) {
-            if cc == '\n' || cc == '/' {
+        while let Some(((ii, cc), (_iii, _ccc))) = self
+            .iter
+            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == ')')
+        {
+            if cc == '\n' {
                 // Partial Variable
-                let token = Token::PartialPlugVariable(&self.input[i + 2..ii]);
+                let token = create_variable_func(&self.input[i + 2..ii], true);
                 self.push_token(i, token, ii);
                 self.previous_index = self.get_safe_index(ii);
-                if cc == '/' {
-                    self.tokenize_comment(ii);
-                } else {
-                    self._handle_new_line(ii);
-                }
+                self._handle_new_line(ii);
                 return;
-            } else if cc == '"' {
-                found_quote = !found_quote;
             } else {
                 // Variable
-                let token = Token::PlugVariable(&self.input[i + 2..ii]);
+                let token = create_variable_func(&self.input[i + 2..ii], false);
                 self.push_token(i, token, ii + 1);
                 self.previous_index = self.get_safe_index(ii + 1);
                 self.start_of_line = false;
@@ -576,55 +617,16 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         }
 
         // Reached the end of the input - Partial Variable
-        let token = Token::PartialPlugVariable(&self.input[i + 2..]);
+        let token = create_variable_func(&self.input[i + 2..], true);
         self.push_token(i, token, self.input.len());
         self.previous_index = None;
-    }
-
-    fn tokenize_upper_variable(&mut self, i: usize) {
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
-            if !unhandled.is_empty() {
-                self.scan_keywords_and_values(unhandled, prev_i);
-                self.start_of_line = false;
-                self.trim_start = false;
-            }
-        }
-        // Find the ending paren
-        if let Some(((ii, cc), (_iii, _ccc))) = self
-            .iter
-            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == ')' || (cc == '/' && ccc == '/'))
-        {
-            if cc == '\n' || cc == '/' {
-                // Partial Variable
-                let token = Token::PartialPlugUpperVariable(&self.input[i + 2..ii]);
-                self.push_token(i, token, ii);
-                self.previous_index = self.get_safe_index(ii);
-                if cc == '/' {
-                    self.tokenize_comment(ii);
-                } else {
-                    self._handle_new_line(ii);
-                }
-            } else {
-                // Variable
-                let token = Token::PlugUpperVariable(&self.input[i + 2..ii]);
-                self.push_token(i, token, ii + 1);
-                self.previous_index = self.get_safe_index(ii + 1);
-                self.start_of_line = false;
-                self.trim_start = false;
-            }
-        } else {
-            // Reached the end of the input - Partial Variable
-            let token = Token::PartialPlugUpperVariable(&self.input[i + 2..]);
-            self.push_token(i, token, self.input.len());
-            self.previous_index = None;
-        }
     }
 
     #[inline]
     fn tokenize(&mut self) {
         // Tokenize until we find:
         //   1. End of line
-        //   2. Comment // TODO: Should we even scan for comments.
+        //   2. Comment // Deprecated. NSPlug does not really support comments
         //   3. Plug variable
         //   4. Plug upper variable
         //   5. Macro
@@ -633,20 +635,44 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
-                || (c == '/' && cc == '/') // Comment
+                // NSPlug does not really support comments
+                // || (c == '/' && cc == '/') // Comment
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (c == '#') // Macro
         }) {
             match c {
                 '\n' => {
-                    self.tokenize_new_line(i);
+                    self.tokenize_new_line(i, true);
                     // Break out of the tokenize for-loop after each line
                     break;
                 }
-                '/' => self.tokenize_comment(i),
-                c if (c == '$' && (cc == '{' || cc == '(')) => self.tokenize_variable(i, c, cc),
-                c if (c == '%' && cc == '(') => self.tokenize_upper_variable(i),
+                // NSPlug does not really support comments.
+                //'/' => self.tokenize_comment(i),
+                c if (c == '$' && cc == '(') => {
+                    // drop the unhandled tokens before this because we are not
+                    // on a macro line
+                    self.drop_unhandled_string(i);
+                    self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugVariable(text)
+                        } else {
+                            Token::PartialPlugVariable(text)
+                        }
+                    })
+                }
+                c if (c == '%' && cc == '(') => {
+                    // drop the unhandled tokens before this because we are not
+                    // on a macro line
+                    self.drop_unhandled_string(i);
+                    self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::PlugUpperVariable(text)
+                        } else {
+                            Token::PartialPlugUpperVariable(text)
+                        }
+                    })
+                }
                 '#' => self.tokenize_macro(i),
                 _ => {}
             }

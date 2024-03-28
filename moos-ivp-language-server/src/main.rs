@@ -56,10 +56,10 @@ use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
     notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
     request::{Completion, GotoDefinition},
-    ClientCapabilities, GotoDefinitionResponse, InitializeParams, OneOf, SemanticTokenModifier,
-    SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, GotoDefinitionResponse,
+    InitializeParams, OneOf, SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
 use tracing::trace as mlog;
@@ -157,6 +157,11 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             }
             .into(),
         ),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+            inter_file_dependencies: false,
+            workspace_diagnostics: true,
+            ..Default::default()
+        })),
         ..Default::default()
     };
 
@@ -199,29 +204,6 @@ fn main_loop(
     );
     info!("starting example main loop");
 
-    let mut handler = Handler::new(params);
-    for msg in &connection.receiver {
-        trace!("got msg: {msg:?}");
-        match msg {
-            Message::Request(request) => {
-                if connection.handle_shutdown(&request)? {
-                    return Ok(());
-                }
-                if let Some(response) = handler.handle_request(request) {
-                    mlog!("Sending Response: {response:?}");
-                    connection.sender.send(Message::Response(response))?;
-                }
-            }
-            Message::Response(resp) => {
-                mlog!("got response: {resp:?}");
-            }
-            Message::Notification(notification) => {
-                mlog!("got notification: {notification:?}");
-                if let Err(e) = handler.handle_notification(notification) {
-                    error!("Failed to handle notification: {e:?}");
-                }
-            }
-        }
-    }
-    Ok(())
+    let mut handler = Handler::new(connection, params);
+    return handler.run(); // Blocks until there are no messages left
 }

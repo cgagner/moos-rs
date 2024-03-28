@@ -19,6 +19,8 @@ pub Line: Line<'input> = {
     "EOL" => Line::EndOfLine,
     <comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
+    <variable:"PlugVariable"> => Line::PlugVariable(variable),
+    <variable:"PlugUpperVariable"> => Line::PlugUpperVariable(variable),
     ! => { state.errors.push(<>); Line::Error },
 }
 
@@ -33,7 +35,7 @@ MacroDefine: Line<'input> = {
 }
 
 MacroDefinition: MacroDefinition<'input> = {
-    <name:"ValueString"> <value:Value?> => {
+    <name:"ValueString"> " " <value:Value?> => {
         MacroDefinition::new(name, value)
     }
 }
@@ -163,5 +165,6 @@ extern {
         "#unknown" => Token::UnknownMacro(<&'input str>),
         "||" => Token::OrOperator,
         "&&" => Token::AndOperator,
+        " " => Token::Space,
     }
 }

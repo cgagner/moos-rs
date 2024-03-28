@@ -1,13 +1,15 @@
 use std::error::Error;
 
-use lsp_server::{Connection, Message, RequestId, Response};
+use lsp_server::{Connection, Message, Notification, RequestId, Response};
 use lsp_types::{
-    notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
+    notification::{
+        DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
+    },
     request::{Completion, GotoDefinition, SemanticTokensFullRequest},
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionResponse,
-    InitializeParams, OneOf, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
-    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams,
+    SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
 use crate::cache::Project;
@@ -36,16 +38,46 @@ enum MyNotifications {
 
 pub struct Handler {
     cache: Project,
+    connection: Connection,
     params: InitializeParams,
 }
 
 impl Handler {
-    pub fn new(params: InitializeParams) -> Self {
+    pub fn new(connection: Connection, params: InitializeParams) -> Self {
         let root = params.root_path.clone().unwrap_or_default();
         Self {
             cache: Project::new(root),
+            connection,
             params,
         }
+    }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn Error + Sync + Send>> {
+        let receiver = self.connection.receiver.clone();
+        for msg in receiver {
+            trace!("got msg: {msg:?}");
+            match msg {
+                Message::Request(request) => {
+                    if self.connection.handle_shutdown(&request)? {
+                        return Ok(());
+                    }
+                    if let Some(response) = self.handle_request(request) {
+                        trace!("Sending Response: {response:?}");
+                        self.connection.sender.send(Message::Response(response))?;
+                    }
+                }
+                Message::Response(resp) => {
+                    mlog!("got response: {resp:?}");
+                }
+                Message::Notification(notification) => {
+                    mlog!("got notification: {notification:?}");
+                    if let Err(e) = self.handle_notification(notification) {
+                        error!("Failed to handle notification: {e:?}");
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     //-----------------------------------------------------------------------------
@@ -138,7 +170,20 @@ impl Handler {
         let uri = &params.text_document.uri;
         info!("Document Opened: {uri}");
 
-        self.cache.insert(&uri, &params.text_document.text);
+        let document = self.cache.insert(&uri, &params.text_document.text);
+
+        let diagnostics =
+            PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
+        let params = serde_json::to_value(&diagnostics).unwrap();
+        use lsp_types::notification::Notification;
+        let notification = lsp_server::Notification {
+            method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
+            params,
+        };
+        self.connection
+            .sender
+            .send(Message::Notification(notification))?;
+
         Ok(())
     }
 
@@ -172,7 +217,19 @@ impl Handler {
                 )));
             }
 
-            self.cache.insert(&uri, &change.text);
+            let document = self.cache.insert(&uri, &change.text);
+
+            let diagnostics =
+                PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
+            let params = serde_json::to_value(&diagnostics).unwrap();
+            use lsp_types::notification::Notification;
+            let notification = lsp_server::Notification {
+                method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
+                params,
+            };
+            self.connection
+                .sender
+                .send(Message::Notification(notification))?;
         }
 
         Ok(())

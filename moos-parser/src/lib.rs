@@ -30,6 +30,9 @@ pub type LinesParser = moos::LinesParser;
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugParser = nsplug::LinesParser;
 
+#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
+pub type ParseError<L, T, E> = lalrpop_util::ParseError<L, T, E>;
+
 #[cfg(test)]
 mod tests {
 
