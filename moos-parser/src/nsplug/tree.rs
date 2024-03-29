@@ -1,4 +1,5 @@
 use crate::lexers::TokenRange;
+use crate::vec_wrapper;
 use lalrpop_util::lalrpop_mod;
 use lalrpop_util::ErrorRecovery;
 
@@ -17,102 +18,145 @@ pub enum Value<'input> {
     Integer(i64, &'input str, TokenRange),
     Float(f64, &'input str, TokenRange),
     String(&'input str, TokenRange),
-    PlugVariable(&'input str, TokenRange),
-    PlugUpperVariable(&'input str, TokenRange),
-    PartialPlugVariable(&'input str, TokenRange),
-    PartialPlugUpperVariable(&'input str, TokenRange),
+    Quote(Quote<'input>),
+    Variable(Variable<'input>),
 }
 
 impl<'input> ToString for Value<'input> {
     fn to_string(&self) -> String {
-        match *self {
+        match self {
             Self::Boolean(_, value_str, _)
             | Self::Integer(_, value_str, _)
             | Self::Float(_, value_str, _)
-            | Self::String(value_str, _) => value_str.to_owned(),
-            // We won't evaluate plug variables as part of this parser.
-            Self::PlugVariable(value_str, _) => format!("$({})", value_str),
-            Self::PlugUpperVariable(value_str, _) => format!("%({})", value_str),
-            Self::PartialPlugVariable(value_str, _) => format!("$({}", value_str),
-            Self::PartialPlugUpperVariable(value_str, _) => format!("%({}", value_str),
+            | Self::String(value_str, _) => (*value_str).to_string(),
+            Self::Quote(quote) => quote.to_string(),
+            Self::Variable(variable) => variable.to_string(),
         }
     }
 }
 
-#[derive(Debug, Default)]
-struct Values<'input>(Vec<Value<'input>>);
-
-impl<'input> IntoIterator for Values<'input> {
-    type Item = Value<'input>;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+impl<'input> From<Variable<'input>> for Value<'input> {
+    fn from(value: Variable<'input>) -> Self {
+        Self::Variable(value)
     }
 }
 
-impl<'input> IntoIterator for &'input Values<'input> {
-    type Item = &'input Value<'input>;
-    type IntoIter = core::slice::Iter<'input, Value<'input>>;
+impl<'input> TryFrom<Value<'input>> for Variable<'input> {
+    type Error = ();
 
-    fn into_iter(self) -> Self::IntoIter {
-        (&self.0).into_iter()
+    fn try_from(value: Value<'input>) -> Result<Self, Self::Error> {
+        match value {
+            Value::Variable(variable) => Ok(variable),
+            _ => Err(()),
+        }
     }
 }
 
-impl<'input> Values<'input> {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
+// Declares a new struct Values that wraps a Vec<Value>
+vec_wrapper!(Values, Value);
 
-    #[inline]
-    pub fn clear(&mut self) {
-        self.0.clear();
+#[derive(Debug)]
+pub enum Variable<'input> {
+    Regular {
+        text: &'input str,
+        range: TokenRange,
+    },
+    Upper {
+        text: &'input str,
+        range: TokenRange,
+    },
+    Partial {
+        text: &'input str,
+        range: TokenRange,
+    },
+    PartialUpper {
+        text: &'input str,
+        range: TokenRange,
+    },
+}
+impl<'input> ToString for Variable<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            Variable::Regular { text, range } => format!("$({})", text),
+            Variable::Upper { text, range } => format!("%({})", text),
+            Variable::Partial { text, range } => format!("$({}", text),
+            Variable::PartialUpper { text, range } => format!("%({}", text),
+        }
     }
+}
 
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.0.len()
+#[derive(Debug)]
+pub enum VariableString<'input> {
+    String(&'input str, TokenRange),
+    Variable(Variable<'input>),
+}
+
+impl<'input> ToString for VariableString<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            Self::String(value_str, _) => (*value_str).to_string(),
+            // We won't evaluate plug variables as part of this parser.
+            Self::Variable(variable) => variable.to_string(),
+        }
     }
+}
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+impl<'input> From<Variable<'input>> for VariableString<'input> {
+    fn from(value: Variable<'input>) -> Self {
+        Self::Variable(value)
     }
+}
 
-    #[inline]
-    pub fn iter(&self) -> core::slice::Iter<'input, Value> {
-        self.0.iter()
+impl<'input> TryFrom<VariableString<'input>> for Variable<'input> {
+    type Error = ();
+
+    fn try_from(value: VariableString<'input>) -> Result<Self, Self::Error> {
+        match value {
+            VariableString::Variable(variable) => Ok(variable),
+            _ => Err(()),
+        }
     }
+}
 
-    /// Combine all of the values into one string. If there are environment
-    /// variables, those will be evaluated and replaced with their values.
-    #[inline]
-    pub fn eval(&self) -> String {
-        let rtn = "".to_owned();
-        self.0
-            .iter()
-            .fold(rtn, |acc, v| acc + v.to_string().as_str())
+vec_wrapper!(VariableStrings, VariableString);
+
+#[derive(Debug)]
+pub struct Quote<'input> {
+    pub content: VariableStrings<'input>,
+    pub range: TokenRange,
+}
+
+impl<'input> ToString for Quote<'input> {
+    fn to_string(&self) -> String {
+        return format!("\"{}\"", self.content.eval());
     }
+}
 
-    #[inline]
-    pub fn first(&self) -> Option<&Value<'input>> {
-        self.0.first()
+impl<'input> From<Quote<'input>> for Value<'input> {
+    fn from(value: Quote<'input>) -> Self {
+        Self::Quote(value)
     }
+}
 
-    #[inline]
-    pub fn push(&mut self, value: Value<'input>) {
-        self.0.push(value);
+#[derive(Debug)]
+pub enum IncludePath<'input> {
+    VariableStrings(VariableStrings<'input>, TokenRange),
+    Quote(Quote<'input>),
+}
+
+impl<'input> ToString for IncludePath<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            Self::VariableStrings(values, _) => values.to_string(),
+            // We won't evaluate plug variables as part of this parser.
+            Self::Quote(quote) => quote.to_string(),
+        }
     }
+}
 
-    #[inline]
-    pub fn pop(&mut self) -> Option<Value<'input>> {
-        self.0.pop()
-    }
-
-    #[inline]
-    pub fn last(&self) -> Option<&Value<'input>> {
-        self.0.last()
+impl<'input> From<Quote<'input>> for IncludePath<'input> {
+    fn from(value: Quote<'input>) -> Self {
+        Self::Quote(value)
     }
 }
 
@@ -120,38 +164,45 @@ impl<'input> Values<'input> {
 pub enum MacroType<'input> {
     Define {
         definition: MacroDefinition<'input>,
+        /// Range of the "#define"
         range: TokenRange,
     },
     Include {
-        path: &'input str,
+        path: IncludePath<'input>,
+        /// Range of the "#include"
         range: TokenRange,
     },
     IfDef {
+        /// Range of the "#ifdef"
         range: TokenRange,
     },
     IfNotDef {
+        /// Range of the "#ifndef"
         range: TokenRange,
     },
     ElseIfDef {
+        /// Range of the "#elseifdef"
         range: TokenRange,
     },
     Else {
+        /// Range of the "#else"
         range: TokenRange,
     },
     EndIf {
+        /// Range of the "#endif"
         range: TokenRange,
     },
 }
 
 #[derive(Debug)]
 pub struct MacroDefinition<'input> {
-    name: &'input str,
-    value: Option<Value<'input>>,
+    name: Values<'input>,
+    value: Values<'input>,
 }
 
 impl<'input> MacroDefinition<'input> {
     /// Create a new MacroDefinition
-    pub fn new(name: &'input str, value: Option<Value<'input>>) -> Self {
+    pub fn new(name: Values<'input>, value: Values<'input>) -> Self {
         MacroDefinition { name, value }
     }
 
@@ -190,12 +241,8 @@ pub enum Line<'input> {
         comment: Option<&'input str>,
         line: u32,
     },
-    PlugVariable {
-        variable: &'input str,
-        line: u32,
-    },
-    PlugUpperVariable {
-        variable: &'input str,
+    Variable {
+        variable: Variable<'input>,
         line: u32,
     },
     Error,
@@ -212,7 +259,7 @@ mod tests {
         lexers::TokenRange,
     };
 
-    use super::{Value, Values};
+    use super::{Value, Values, Variable};
 
     lalrpop_mod!(
         #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
@@ -228,15 +275,15 @@ mod tests {
             TokenRange::new(0, 11).unwrap(),
         ));
 
-        values.0.push(Value::PlugVariable(
-            "NAME",
-            TokenRange::new(11, 18).unwrap(),
-        ));
+        values.0.push(Value::Variable(Variable::Regular {
+            text: "NAME",
+            range: TokenRange::new(11, 18).unwrap(),
+        }));
 
         for v in &values {
             println!("Value: {v:?}");
         }
 
-        println!("Values as string: '''${:?}'''", values.eval());
+        println!("!!Values as string: '''{}'''", values.eval());
     }
 }

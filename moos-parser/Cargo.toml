@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+lsp-types = ["dep:lsp-types"]
 
 [dependencies]
 regex = "1"
 lalrpop-util = {version = "0.19.12", features = ["lexer"]}
 log = "0.4"
 tracing = "0.1.40"
+lsp-types = {version = "0.95.1", optional = true}
 
 
 [dev-dependencies]

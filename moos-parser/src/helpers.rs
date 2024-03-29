@@ -33,3 +33,100 @@ pub fn get_environment_variable(
         Err(VarError::NotPresent)
     }
 }
+
+#[macro_export]
+macro_rules! vec_wrapper {
+    ( $name:ident , $type:ident ) => {
+        #[derive(Debug, Default)]
+        pub struct $name<'lt>(Vec<$type<'lt>>);
+
+        impl<'lt> IntoIterator for $name<'lt> {
+            type Item = $type<'lt>;
+            type IntoIter = std::vec::IntoIter<Self::Item>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.into_iter()
+            }
+        }
+
+        impl<'lt> IntoIterator for &'lt $name<'lt> {
+            type Item = &'lt $type<'lt>;
+            type IntoIter = core::slice::Iter<'lt, $type<'lt>>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                (&self.0).into_iter()
+            }
+        }
+
+        impl<'lt> $name<'lt> {
+            pub fn new() -> Self {
+                Self(Vec::new())
+            }
+
+            #[inline]
+            pub fn clear(&mut self) {
+                self.0.clear();
+            }
+
+            #[inline]
+            pub fn len(&self) -> usize {
+                self.0.len()
+            }
+
+            #[inline]
+            pub fn is_empty(&self) -> bool {
+                self.0.is_empty()
+            }
+
+            #[inline]
+            pub fn iter(&self) -> core::slice::Iter<'lt, $type> {
+                self.0.iter()
+            }
+
+            /// Combine all of the values into one string. If there are environment
+            /// variables, those will be evaluated and replaced with their values.
+            #[inline]
+            pub fn eval(&self) -> String {
+                let rtn = "".to_owned();
+                self.0
+                    .iter()
+                    .fold(rtn, |acc, v| acc + v.to_string().as_str())
+            }
+
+            #[inline]
+            pub fn first(&self) -> Option<&$type<'lt>> {
+                self.0.first()
+            }
+
+            #[inline]
+            pub fn push(&mut self, value: $type<'lt>) {
+                self.0.push(value);
+            }
+
+            #[inline]
+            pub fn pop(&mut self) -> Option<$type<'lt>> {
+                self.0.pop()
+            }
+
+            #[inline]
+            pub fn last(&self) -> Option<&$type<'lt>> {
+                self.0.last()
+            }
+        }
+
+        impl<'lt> From<Vec<$type<'lt>>> for $name<'lt> {
+            fn from(values: Vec<$type<'lt>>) -> Self {
+                Self(values)
+            }
+        }
+
+        impl<'lt> ToString for $name<'lt> {
+            fn to_string(&self) -> String {
+                let rtn = "".to_owned();
+                self.0
+                    .iter()
+                    .fold(rtn, |acc, v| acc + v.to_string().as_str())
+            }
+        }
+    };
+}

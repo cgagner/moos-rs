@@ -26,6 +26,16 @@ impl Default for Location {
     }
 }
 
+#[cfg(feature = "lsp-types")]
+impl Into<lsp_types::Position> for Location {
+    fn into(self) -> lsp_types::Position {
+        lsp_types::Position {
+            line: self.line,
+            character: self.index,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TokenRange {
     /// Starting character in a line (inclusive)

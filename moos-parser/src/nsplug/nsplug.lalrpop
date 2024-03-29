@@ -2,7 +2,7 @@ use std::str::FromStr;
 use crate::lexers::{Location, TokenRange};
 use crate::nsplug::error::PlugParseError;
 use crate::nsplug::lexer::{State, Token};
-use crate::nsplug::tree::{MacroDefinition, MacroCondition, MacroType, Line};
+use crate::nsplug::tree::{self, MacroDefinition, MacroCondition, MacroType, Line};
 use lalrpop_util::ErrorRecovery;
 
 //grammar<'input>(input: &'input str);
@@ -18,8 +18,7 @@ pub Line: Line<'input> = {
     "EOL" => Line::EndOfLine,
     //<comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
-    <l:@L> <variable:"PlugVariable"> => Line::PlugVariable{variable, line: l.line},
-    <l:@L> <variable:"PlugUpperVariable"> => Line::PlugUpperVariable{variable, line: l.line},
+    <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
     ! => { state.errors.push(<>); Line::Error },
 }
 
@@ -39,8 +38,8 @@ MacroDefine: Line<'input> = {
 }
 
 MacroDefinition: MacroDefinition<'input> = {
-    <name:"ValueString"> " " <value:Value?> => {
-        MacroDefinition::new(name, value)
+    <name:Value+> " " <value:Value*> => {
+        MacroDefinition::new(name.into(), value.into())
     }
 }
 
@@ -89,44 +88,25 @@ MacroEndif: Line<'input> = {
 }
 
 MacroInclude: Line<'input> = {
-    <ml:@L> <d:"#include"> <mr:@R> <path:"ValueString"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
-        if !extras.is_empty() {
+    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <l:@L> <comment:"Comment"?> <r:@R> "EOL" => {
+        if let Some(comment) = comment {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
-                    // TODO: Need to create a more descriptive error
-                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                    error: PlugParseError::new_unexpected_comment(comment, l, r)
                 },
                 dropped_tokens: vec![]
             };
             state.errors.push(e);
-            Line::Error
-        } else {
-            Line::Macro{
-                macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
-                comment,
-                line: ml.line,
-            }
         }
-    }, 
-    <ml:@L> <d:"#include"> <mr:@R> <path:"Quote"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
-        if !extras.is_empty() {
-            let e = lalrpop_util::ErrorRecovery { 
-                error: lalrpop_util::ParseError::User {
-                    // TODO: Need to create a more descriptive error
-                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
-                },
-                dropped_tokens: vec![]
-            };
-            state.errors.push(e);
-            Line::Error
-        } else {
-            Line::Macro{
-                macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
-                comment,
-                line: ml.line,
-            }
+        Line::Macro{
+            macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment,
+            line: ml.line,
         }
+        
     }, 
+    // TODO: Need to add support for `#include filename <tag>`
+    
 }
 
 UnknownMacro: Line<'input> = {
@@ -142,16 +122,43 @@ UnknownMacro: Line<'input> = {
     }
 }
 
-Value: crate::nsplug::tree::Value<'input> = {
-    <l:@L> <value:"bool"> <r:@R> => crate::nsplug::tree::Value::Boolean(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"int"> <r:@R> => crate::nsplug::tree::Value::Integer(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"float"> <r:@R> => crate::nsplug::tree::Value::Float(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"ValueString"> <r:@R> => crate::nsplug::tree::Value::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"Quote"> <r:@R> => crate::nsplug::tree::Value::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"PlugVariable"> <r:@R> => crate::nsplug::tree::Value::PlugVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"PlugUpperVariable"> <r:@R> => crate::nsplug::tree::Value::PlugUpperVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"PartialPlugVariable"> <r:@R> => crate::nsplug::tree::Value::PartialPlugVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
-    <l:@L> <value:"PartialPlugUpperVariable"> <r:@R> => crate::nsplug::tree::Value::PartialPlugUpperVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+Variable: tree::Variable<'input> = {
+    <l:@L> <text:"PlugVariable"> <r:@R> => tree::Variable::Regular{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
+    <l:@L> <text:"PlugUpperVariable"> <r:@R> => tree::Variable::Upper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
+    <l:@L> <text:"PartialPlugVariable"> <r:@R> => {
+        let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    error: PlugParseError::new_missing_trailing(')', l, r)
+                },
+                dropped_tokens: vec![]
+            };
+        state.errors.push(e);
+        tree::Variable::Partial{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")}
+    },
+    <l:@L> <text:"PartialPlugUpperVariable"> <r:@R> => tree::Variable::PartialUpper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
+}
+
+Value: tree::Value<'input> = {
+    <l:@L> <value:"bool"> <r:@R> => tree::Value::Boolean(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"int"> <r:@R> => tree::Value::Integer(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"float"> <r:@R> => tree::Value::Float(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"ValueString"> <r:@R> => tree::Value::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <quote: Quote> => quote.into(),
+    <value: Variable> => value.into(),
+}
+
+VariableString: tree::VariableString<'input> = {
+    <l:@L> <value:"ValueString"> <r:@R> => tree::VariableString::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
+    Variable => tree::VariableString::Variable(<>),
+}
+
+Quote: tree::Quote<'input> = {
+    <l:@L> QuoteBegin <content: VariableString*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
+}
+
+IncludePath: tree::IncludePath<'input> = {
+     <l:@L> <content: VariableString+> <r:@R> => tree::IncludePath::VariableStrings(content.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
+    Quote => tree::IncludePath::Quote(<>),
 }
 
 // ---------------------------------------------------------------------------
@@ -164,8 +171,8 @@ extern {
     
     enum Token<'input> {
         "Comment" => Token::Comment(<&'input str>),
-        "Quote" => Token::Quote(<&'input str>),
-        "PartialQuote" => Token::PartialQuote(<&'input str>, <char>),
+        QuoteBegin => Token::QuoteBegin,
+        QuoteEnd => Token::QuoteEnd,
         "ValueString" => Token::ValueString(<&'input str>),
         "EOL" => Token::EOL,
         "PlugVariable" => Token::PlugVariable(<&'input str>),

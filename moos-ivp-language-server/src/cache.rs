@@ -268,8 +268,24 @@ impl Document {
                             }
                         }
                     }
-                    PlugVariable { variable, line } => {
+                    Variable { variable, line } => {
                         // TODO: Add a reference to the variable
+
+                        match variable {
+                            nsplug::tree::Variable::Regular { text: _, range }
+                            | nsplug::tree::Variable::Upper { text: _, range }
+                            | nsplug::tree::Variable::Partial { text: _, range }
+                            | nsplug::tree::Variable::PartialUpper { text: _, range } => {
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Variable as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -287,14 +303,8 @@ impl Document {
                     PlugParseErrorKind::MissingNewLine => {
                         let d = Diagnostic::new(
                             lsp_types::Range {
-                                start: lsp_types::Position {
-                                    line: error.loc_start.line,
-                                    character: error.loc_start.index,
-                                },
-                                end: lsp_types::Position {
-                                    line: error.loc_end.line,
-                                    character: error.loc_end.index,
-                                },
+                                start: error.loc_start.into(),
+                                end: error.loc_start.into(),
                             },
                             Some(DiagnosticSeverity::ERROR),
                             None,
@@ -305,22 +315,45 @@ impl Document {
                         );
                         self.diagnostics.push(d);
                     }
-                    PlugParseErrorKind::MissingTrailing(c) => {}
+                    PlugParseErrorKind::MissingTrailing(c) => {
+                        let d = Diagnostic::new(
+                            lsp_types::Range {
+                                start: error.loc_start.into(),
+                                end: error.loc_end.into(),
+                            },
+                            Some(DiagnosticSeverity::ERROR),
+                            None,
+                            None,
+                            format!("Missing trailing character {c:?}"),
+                            None,
+                            None,
+                        );
+                        self.diagnostics.push(d);
+                    }
                     PlugParseErrorKind::UnexpectedSymbol(c) => {}
-                    _ => {}
+                    PlugParseErrorKind::UnexpectedComment(comment) => {
+                        let d = Diagnostic::new(
+                            lsp_types::Range {
+                                start: error.loc_start.into(),
+                                end: error.loc_end.into(),
+                            },
+                            Some(DiagnosticSeverity::ERROR),
+                            None,
+                            None,
+                            format!("Unexpected comment: {comment}"),
+                            None,
+                            None,
+                        );
+                        self.diagnostics.push(d);
+                    }
+                    PlugParseErrorKind::UnknownMacro(_) => {}
                 },
                 ParseError::UnrecognizedToken { token, expected } => {
                     let (loc_start, token, loc_end) = token;
                     let d = Diagnostic::new(
                         lsp_types::Range {
-                            start: lsp_types::Position {
-                                line: loc_start.line,
-                                character: loc_start.index,
-                            },
-                            end: lsp_types::Position {
-                                line: loc_end.line,
-                                character: loc_end.index,
-                            },
+                            start: loc_start.into(),
+                            end: loc_end.into(),
                         },
                         Some(DiagnosticSeverity::ERROR),
                         None,

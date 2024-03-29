@@ -15,13 +15,30 @@ impl<'input> PlugParseError<'input> {
             loc_end,
         }
     }
-    pub fn new_missing_trailing(c: char, loc_end: Location) -> PlugParseError<'input> {
+    pub fn new_missing_trailing(
+        c: char,
+        loc_start: Location,
+        loc_end: Location,
+    ) -> PlugParseError<'input> {
         PlugParseError {
             kind: PlugParseErrorKind::MissingTrailing(c),
-            loc_start: loc_end,
+            loc_start,
             loc_end,
         }
     }
+
+    pub fn new_unexpected_comment(
+        comment: &'input str,
+        loc_start: Location,
+        loc_end: Location,
+    ) -> PlugParseError<'input> {
+        PlugParseError {
+            kind: PlugParseErrorKind::UnexpectedComment(comment),
+            loc_start,
+            loc_end,
+        }
+    }
+
     pub fn new_unexpected_symbol(c: char, loc_end: Location) -> PlugParseError<'input> {
         PlugParseError {
             kind: PlugParseErrorKind::UnexpectedSymbol(c),
@@ -56,6 +73,7 @@ pub enum PlugParseErrorKind<'input> {
     MissingTrailing(char),
     MissingNewLine,
     InvalidConfigBlock,
+    UnexpectedComment(&'input str),
     UnexpectedSymbol(char),
     UnknownMacro(&'input str),
 }

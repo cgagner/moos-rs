@@ -195,28 +195,6 @@ mod tests {
     ); // syntesized by LALRPOP
 
     #[test]
-    fn test_values_iterator() {
-        let mut values = Values::default();
-
-        values.0.push(Value::String(
-            "My name is ",
-            TokenRange::new(0, 11).unwrap(),
-        ));
-
-        values.0.push(Value::PlugVariable(
-            "NAME",
-            TokenRange::new(11, 18).unwrap(),
-        ));
-
-        for v in &values {
-            println!("Value: {v:?}");
-        }
-
-        values.0.iter();
-        println!("Values as string: '''${:?}'''", values.eval());
-    }
-
-    #[test]
     fn test_block_newline_fail() {
         let input = r#"
         // Antler configuration  block
