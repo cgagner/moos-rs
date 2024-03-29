@@ -17,10 +17,8 @@ pub enum Value<'input> {
     Integer(i64, &'input str, TokenRange),
     Float(f64, &'input str, TokenRange),
     String(&'input str, TokenRange),
-    EnvVariable(&'input str, TokenRange),
     PlugVariable(&'input str, TokenRange),
     PlugUpperVariable(&'input str, TokenRange),
-    PartialEnvVariable(&'input str, TokenRange),
     PartialPlugVariable(&'input str, TokenRange),
     PartialPlugUpperVariable(&'input str, TokenRange),
 }
@@ -32,10 +30,6 @@ impl<'input> ToString for Value<'input> {
             | Self::Integer(_, value_str, _)
             | Self::Float(_, value_str, _)
             | Self::String(value_str, _) => value_str.to_owned(),
-            Self::EnvVariable(value_str, _) => {
-                std::env::var(value_str).unwrap_or(format!("${{{}}}", value_str))
-            }
-            Self::PartialEnvVariable(value_str, _) => format!("${{{}", value_str),
             // We won't evaluate plug variables as part of this parser.
             Self::PlugVariable(value_str, _) => format!("$({})", value_str),
             Self::PlugUpperVariable(value_str, _) => format!("%({})", value_str),
@@ -212,137 +206,6 @@ mod tests {
             println!("Value: {v:?}");
         }
 
-        values.0.iter();
         println!("Values as string: '''${:?}'''", values.eval());
-    }
-
-    #[test]
-    fn test_block_newline_fail() {
-        let input = r#"
-        // Antler configuration  block
-        ProcessConfig = ANTLER {
-            MSBetweenLaunches = 200
-        }
-        "#;
-
-        let mut lexer = Lexer::new(input);
-
-        while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("Parser Token: {:?}", token);
-        }
-
-        lexer = Lexer::new(input);
-        let mut state = State::default();
-        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
-        println!("Result: {:?}", result);
-
-        // // This test should fail
-        // assert!(result.is_err());
-        // if let Err(e) = result {
-        //     assert_eq!(
-        //         lalrpop_util::ParseError::User {
-        //             error: crate::error::MoosParseError::new_missing_new_line(
-        //                 crate::lexers::Location::new(2, 31),
-        //                 crate::lexers::Location::new(2, 32),
-        //             ),
-        //         },
-        //         e,
-        //     )
-        // }
-    }
-
-    #[test]
-    fn test_block_newline_pass() {
-        let input = r#"
-        // Antler configuration  block
-        ProcessConfig = ANTLER 
-        {
-            MSBetweenLaunches = 200
-        }
-        "#;
-
-        let mut lexer = Lexer::new(input);
-
-        while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("Parser Token: {:?}", token);
-        }
-
-        lexer = Lexer::new(input);
-        let mut state = State::default();
-        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
-        println!("Result: {:?}", result);
-
-        // This test should fail
-        assert!(result.is_ok());
-        assert!(state.errors.is_empty());
-    }
-
-    #[test]
-    fn test_line_parser() {
-        let input = r#"
-        define: TEST_VAR = 1234
-        // Test Mission File
-        ServerHost   = localhost
-        ServerPort   = 9000
-        Community    = alpha
-
-        ${TEST}      = 12
-        MOOSTimeWarp = 1
-
-
-        // MIT Sailing Pavilion
-        LatOrigin  = 42.35846207515723
-        LongOrigin = -71.08774014042629
-
-        //------------------------------------------
-        // Antler configuration  block
-        ProcessConfig = ANTLER
-        {
-          MSBetweenLaunches = 200
-          ExecutablePath = system // System path
-          Run = MOOSDB          @ NewConsole = false
-          Run = pLogger         @ NewConsole = true
-          Run = uSimMarine      @ NewConsole = false
-          Run = pMarinePID      @ NewConsole = false
-          Run = pHelmIvP        @ NewConsole = true, ExtraProcessParams=HParams
-          Run = pMarineViewer	@ NewConsole = false
-          Run = uProcessWatch	@ NewConsole = false
-          Run = pNodeReporter	@ NewConsole = false
-          Run = uMemWatch       @ NewConsole = false
-          Run = pXRelay @ NewConsole = true ~ pXRelay_PEARS
-
-          // Helm Params
-          HParams=--alias=pHelmIvP_Standby
-        }
-        define: MY_VAR = "this is a test"
-        //------------------------------------------
-        // uMemWatch config block
-
-        ProcessConfig = uMemWatch
-        {
-          AppTick   = $(POP) // Test
-          CommsTick = 4
-
-          absolute_time_gap = 1   // In Seconds, Default is 4
-          log_path = "/home/user/tmp"
-
-          watch_only = pHelmIvP,pMarineViewer
-        }
-        "#;
-
-        let mut lexer = Lexer::new(input);
-
-        while let Some(Ok((_, token, _))) = lexer.next() {
-            println!("Parser Token: {:?}", token);
-        }
-
-        lexer = Lexer::new(input);
-        let mut state = State::default();
-        let result = moos::LinesParser::new().parse(&mut state, input, lexer);
-        println!("Result: {:?}", result);
-        println!("\nErrors: {:?}", state.errors);
-        println!("\nDefines: {:?}", state.defines);
-
-        //assert!(errors.is_empty())
     }
 }

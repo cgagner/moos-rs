@@ -10,7 +10,7 @@
 // The token listener approach is flawed. It does not take semantics into
 // account.
 
-use crate::error::MoosParseError;
+use super::error::PlugParseError;
 use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 
 use core::cmp::max;
@@ -23,11 +23,11 @@ use std::num::{ParseFloatError, ParseIntError};
 use tracing::{debug, error, info, trace, warn};
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
-pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
+pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, PlugParseError<'input>>>;
 
 #[derive(Debug, Default, Clone)]
 pub struct State<'input> {
-    pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>,
+    pub errors: Vec<ErrorRecovery<Location, Token<'input>, PlugParseError<'input>>>,
     pub defines: HashMap<String, String>,
 }
 
@@ -685,7 +685,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         // about them.
     }
 
-    fn _next(&mut self) -> Option<Spanned<Token<'input>, Location, MoosParseError<'input>>> {
+    fn _next(&mut self) -> Option<Spanned<Token<'input>, Location, PlugParseError<'input>>> {
         if let Some(token) = self.token_queue.pop_front() {
             return Some(token);
         }
@@ -700,7 +700,7 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 }
 
 impl<'input, 'listen> Iterator for Lexer<'input, 'listen> {
-    type Item = Spanned<Token<'input>, Location, MoosParseError<'input>>;
+    type Item = Spanned<Token<'input>, Location, PlugParseError<'input>>;
     fn next(&mut self) -> Option<Self::Item> {
         let rtn = self._next();
 

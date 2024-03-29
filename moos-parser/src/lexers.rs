@@ -27,15 +27,15 @@ impl Default for Location {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Range {
+pub struct TokenRange {
     /// Starting character in a line (inclusive)
     start: u32,
     /// Ending character in a line (exclusive)
     end: u32,
 }
 
-impl Range {
-    /// Create a new `Range`. Returns `None` if `start` is not less than `end`.
+impl TokenRange {
+    /// Create a new `TokenRange`. Returns `None` if `start` is not less than `end`.
     pub fn new(start: u32, end: u32) -> Option<Self> {
         if start < end {
             Some(Self { start, end })
@@ -44,7 +44,7 @@ impl Range {
         }
     }
 
-    /// Create a new `Range` from a start and end `Location`. The `start`
+    /// Create a new `TokenRange` from a start and end `Location`. The `start`
     /// and `end` must be on the same line and `start` must be less than `end`.
     pub fn new_line(start: Location, end: Location) -> Option<Self> {
         if start.line != end.line {
@@ -53,28 +53,28 @@ impl Range {
         return Self::new(start.index, end.index);
     }
 
-    /// Get the length of the `Range`
+    /// Get the length of the `TokenRange`
     pub fn len(&self) -> u32 {
         self.end - self.start
     }
 
-    /// Checks if this range overlaps with the `other` `Range`.
-    pub fn overlaps(&self, other: &Range) -> bool {
+    /// Checks if this range overlaps with the `other` `TokenRange`.
+    pub fn overlaps(&self, other: &TokenRange) -> bool {
         self.start < other.end && other.start < self.end
     }
 
     /// Finds the intersection between two ranges.
-    pub fn intersection(&self, other: &Range) -> Option<Range> {
+    pub fn intersection(&self, other: &TokenRange) -> Option<TokenRange> {
         if self.overlaps(other) {
-            Range::new(self.start.max(other.start), self.end.min(other.end))
+            TokenRange::new(self.start.max(other.start), self.end.min(other.end))
         } else {
             None
         }
     }
 
     /// Finds the differences between two ranges. The result is subtracting the
-    /// `other` range from this range.
-    pub fn difference(&self, other: &Range) -> Vec<Range> {
+    /// `other` TokenRange from this TokenRange.
+    pub fn difference(&self, other: &TokenRange) -> Vec<TokenRange> {
         let mut rtn = Vec::new();
         match self.partial_cmp(other) {
             Some(core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
@@ -82,14 +82,14 @@ impl Range {
             }
             None => {
                 if self.start < other.start {
-                    rtn.push(Range {
+                    rtn.push(TokenRange {
                         start: self.start,
                         end: other.start,
                     });
                 }
 
                 if self.end > other.end {
-                    rtn.push(Range {
+                    rtn.push(TokenRange {
                         start: other.end,
                         end: self.end,
                     });
@@ -101,7 +101,7 @@ impl Range {
     }
 }
 
-impl PartialOrd for Range {
+impl PartialOrd for TokenRange {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.start < other.start && self.end <= other.start {
             Some(core::cmp::Ordering::Less)
@@ -116,12 +116,12 @@ impl PartialOrd for Range {
 }
 
 mod token_map {
-    use super::{Location, Range};
+    use super::{Location, TokenRange};
     use std::collections::{BTreeMap, BTreeSet};
 
     // NOTE: Implement `Ord` inside of the `token_map` module so we don't
     // expose it to the public.
-    impl Ord for crate::lexers::Range {
+    impl Ord for crate::lexers::TokenRange {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
             match self.partial_cmp(other) {
                 Some(ord) => ord,
@@ -132,7 +132,7 @@ mod token_map {
 
     #[derive(Debug, Default)]
     pub struct TokenMap<T: Clone> {
-        pub(crate) line_map: BTreeMap<u32, BTreeMap<Range, T>>,
+        pub(crate) line_map: BTreeMap<u32, BTreeMap<TokenRange, T>>,
     }
     impl<T: Clone> TokenMap<T> {
         // Create a new instance of a TokenMap.
@@ -162,7 +162,7 @@ mod token_map {
                 return false;
             }
 
-            let range = match Range::new(start.index, end.index) {
+            let range = match TokenRange::new(start.index, end.index) {
                 Some(r) => r,
                 None => return false,
             };
@@ -182,7 +182,7 @@ mod token_map {
             // Now the fun begins. We need to loop through all tokens to find the
             // ranges that overlap with our new range.
 
-            let mut ranges: BTreeSet<Range> = BTreeSet::new();
+            let mut ranges: BTreeSet<TokenRange> = BTreeSet::new();
             let mut test_range = range;
             let mut keys = tokens.keys().peekable();
             while let Some(key) = keys.next() {
@@ -278,16 +278,19 @@ mod token_map {
 
         /// Get an iterator for the specified `line`. Returns `None` if there
         /// are not any tokens for the specified `line`.
-        pub fn line_iter(&self, line: u32) -> Option<std::collections::btree_map::Iter<Range, T>> {
+        pub fn line_iter(
+            &self,
+            line: u32,
+        ) -> Option<std::collections::btree_map::Iter<TokenRange, T>> {
             let current_line = self.line_map.get(&line)?;
             Some(current_line.iter())
         }
     }
 
     pub struct TokenMapIterator<'a, T: Clone> {
-        line_iter: std::collections::btree_map::Iter<'a, u32, BTreeMap<Range, T>>,
-        current_line: Option<(&'a u32, &'a BTreeMap<Range, T>)>,
-        token_iter: Option<std::collections::btree_map::Iter<'a, Range, T>>,
+        line_iter: std::collections::btree_map::Iter<'a, u32, BTreeMap<TokenRange, T>>,
+        current_line: Option<(&'a u32, &'a BTreeMap<TokenRange, T>)>,
+        token_iter: Option<std::collections::btree_map::Iter<'a, TokenRange, T>>,
     }
 
     impl<'a, T: Clone> TokenMapIterator<'a, T> {
@@ -306,7 +309,7 @@ mod token_map {
         }
     }
     impl<'a, T: Clone> Iterator for TokenMapIterator<'a, T> {
-        type Item = (&'a u32, &'a Range, &'a T);
+        type Item = (&'a u32, &'a TokenRange, &'a T);
 
         fn next(&mut self) -> Option<Self::Item> {
             let current_line = match self.current_line {
@@ -339,7 +342,7 @@ mod token_map {
 
     pub struct RelativeTokenMapIterator<'a, T: Clone> {
         iter: TokenMapIterator<'a, T>,
-        previous_token: Option<(&'a u32, &'a Range, &'a T)>,
+        previous_token: Option<(&'a u32, &'a TokenRange, &'a T)>,
     }
 
     impl<'a, T: Clone> RelativeTokenMapIterator<'a, T> {
@@ -445,43 +448,43 @@ pub fn scan_bool(s: &str) -> Result<bool, ()> {
 mod test {
 
     use crate::lexers::{scan_bool, scan_float, scan_integer};
-    use crate::lexers::{Location, Range};
+    use crate::lexers::{Location, TokenRange};
     use core::cmp::Ordering;
 
     use super::TokenMap;
 
     #[test]
     fn test_range() {
-        assert_eq!(Range::new(5, 4), None);
-        assert_eq!(Range::new(5, 5), None);
+        assert_eq!(TokenRange::new(5, 4), None);
+        assert_eq!(TokenRange::new(5, 5), None);
 
-        if let Some(r1) = Range::new(5, 6) {
+        if let Some(r1) = TokenRange::new(5, 6) {
             assert_eq!(r1.len(), 1)
         } else {
             assert!(false);
         }
 
         // Partial Intersection
-        let r1 = Range::new(5, 11).unwrap();
+        let r1 = TokenRange::new(5, 11).unwrap();
         assert_eq!(r1.len(), 6);
-        let r2 = Range::new(8, 14).unwrap();
+        let r2 = TokenRange::new(8, 14).unwrap();
         assert_eq!(r2.len(), 6);
 
         assert_eq!(r1.partial_cmp(&r2), None);
         assert_eq!(r2.partial_cmp(&r1), None);
 
-        assert_eq!(r1.intersection(&r2), Range::new(8, 11));
-        assert_eq!(r2.intersection(&r1), Range::new(8, 11));
+        assert_eq!(r1.intersection(&r2), TokenRange::new(8, 11));
+        assert_eq!(r2.intersection(&r1), TokenRange::new(8, 11));
 
         assert_eq!(r1.difference(&r1), vec![]);
         assert_eq!(r2.difference(&r2), vec![]);
 
-        assert_eq!(r1.difference(&r2), vec![Range::new(5, 8).unwrap()]);
-        assert_eq!(r2.difference(&r1), vec![Range::new(11, 14).unwrap()]);
+        assert_eq!(r1.difference(&r2), vec![TokenRange::new(5, 8).unwrap()]);
+        assert_eq!(r2.difference(&r1), vec![TokenRange::new(11, 14).unwrap()]);
 
         // Complete intersection
-        let r1 = Range::new(5, 11).unwrap();
-        let r2 = Range::new(3, 14).unwrap();
+        let r1 = TokenRange::new(5, 11).unwrap();
+        let r2 = TokenRange::new(3, 14).unwrap();
 
         assert_eq!(r1.intersection(&r1), Some(r1));
         assert_eq!(r2.intersection(&r2), Some(r2));
@@ -492,18 +495,21 @@ mod test {
         assert_eq!(r1.partial_cmp(&r2), None);
         assert_eq!(r2.partial_cmp(&r1), None);
 
-        assert_eq!(r1.intersection(&r2), Range::new(5, 11));
-        assert_eq!(r2.intersection(&r1), Range::new(5, 11));
+        assert_eq!(r1.intersection(&r2), TokenRange::new(5, 11));
+        assert_eq!(r2.intersection(&r1), TokenRange::new(5, 11));
 
         assert_eq!(r1.difference(&r2), vec![]);
         assert_eq!(
             r2.difference(&r1),
-            vec![Range::new(3, 5).unwrap(), Range::new(11, 14).unwrap()]
+            vec![
+                TokenRange::new(3, 5).unwrap(),
+                TokenRange::new(11, 14).unwrap()
+            ]
         );
 
         // Overlap one character
-        let r1 = Range::new(5, 12).unwrap();
-        let r2 = Range::new(11, 14).unwrap();
+        let r1 = TokenRange::new(5, 12).unwrap();
+        let r2 = TokenRange::new(11, 14).unwrap();
 
         assert_eq!(r1.overlaps(&r2), true);
         assert_eq!(r2.overlaps(&r1), true);
@@ -511,15 +517,15 @@ mod test {
         assert_eq!(r1.partial_cmp(&r2), None);
         assert_eq!(r2.partial_cmp(&r1), None);
 
-        assert_eq!(r1.intersection(&r2), Range::new(11, 12));
-        assert_eq!(r2.intersection(&r1), Range::new(11, 12));
+        assert_eq!(r1.intersection(&r2), TokenRange::new(11, 12));
+        assert_eq!(r2.intersection(&r1), TokenRange::new(11, 12));
 
-        assert_eq!(r1.difference(&r2), vec![Range::new(5, 11).unwrap()]);
-        assert_eq!(r2.difference(&r1), vec![Range::new(12, 14).unwrap()]);
+        assert_eq!(r1.difference(&r2), vec![TokenRange::new(5, 11).unwrap()]);
+        assert_eq!(r2.difference(&r1), vec![TokenRange::new(12, 14).unwrap()]);
 
         // Entirely before/after
-        let r1 = Range::new(5, 11).unwrap();
-        let r2 = Range::new(11, 14).unwrap();
+        let r1 = TokenRange::new(5, 11).unwrap();
+        let r2 = TokenRange::new(11, 14).unwrap();
         assert_eq!(r1.overlaps(&r2), false);
         assert_eq!(r2.overlaps(&r1), false);
 

@@ -6,29 +6,27 @@ pub mod error;
 pub mod helpers;
 pub mod lexer;
 pub mod lexers;
-pub mod nsplug_lexer;
-pub(crate) mod nsplug_tree;
+pub mod nsplug;
 pub mod parser;
+
+use lalrpop_util::ErrorRecovery;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type Lexer<'input, 'listen> = lexer::Lexer<'input, 'listen>;
 
-use lalrpop_util::ErrorRecovery;
 lalrpop_mod!(
     #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
     pub moos
-); // syntesized by LALRPOP
-
-lalrpop_mod!(
-    #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-    pub nsplug
 ); // syntesized by LALRPOP
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type LinesParser = moos::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type PlugParser = nsplug::LinesParser;
+pub type PlugLexer<'input, 'listen> = nsplug::lexer::Lexer<'input, 'listen>;
+
+#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
+pub type PlugParser = nsplug::nsplug::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type ParseError<L, T, E> = lalrpop_util::ParseError<L, T, E>;
@@ -36,7 +34,7 @@ pub type ParseError<L, T, E> = lalrpop_util::ParseError<L, T, E>;
 #[cfg(test)]
 mod tests {
 
-    use crate::{nsplug_lexer, PlugParser};
+    use crate::{PlugLexer, PlugParser};
 
     #[test]
     fn test_plug_parser() -> anyhow::Result<()> {
@@ -125,8 +123,8 @@ mod tests {
 
         let input = "// This is a test\n#define FOO Appless // Comment \n\n\n\n";
 
-        let lexer = nsplug_lexer::Lexer::new(input);
-        let mut state = nsplug_lexer::State::default();
+        let lexer = PlugLexer::new(input);
+        let mut state = crate::nsplug::lexer::State::default();
         let result = PlugParser::new().parse(&mut state, input, lexer);
 
         println!("Result: {:?}", result);

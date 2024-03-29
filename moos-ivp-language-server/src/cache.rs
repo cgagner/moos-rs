@@ -4,10 +4,12 @@ use lsp_types::{
     Diagnostic, DiagnosticSeverity, SemanticToken, SemanticTokenModifier, SemanticTokens, Url,
 };
 use moos_parser::{
-    error::MoosParseErrorKind,
-    lexer::State,
     lexers::{self, Location, TokenMap},
-    nsplug_lexer::{self, Token, TokenListener},
+    nsplug::{
+        self,
+        error::{PlugParseError, PlugParseErrorKind},
+        lexer::{State, Token, TokenListener},
+    },
     Lexer, LinesParser, ParseError, PlugParser,
 };
 use serde::{Deserialize, Serialize};
@@ -170,9 +172,9 @@ impl Document {
 
         info!("Parsing: {:?}", &self.text);
 
-        let mut lexer = moos_parser::nsplug_lexer::Lexer::new(&self.text);
+        let mut lexer = moos_parser::nsplug::lexer::Lexer::new(&self.text);
         lexer.add_listener(&mut self.token_collector);
-        let mut state = moos_parser::nsplug_lexer::State::default();
+        let mut state = moos_parser::nsplug::lexer::State::default();
         let result = PlugParser::new().parse(&mut state, &self.text, lexer);
 
         let iter = self.diagnostics.iter();
@@ -181,8 +183,8 @@ impl Document {
         for e in state.errors {
             match e.error {
                 ParseError::User { error } => match error.kind {
-                    MoosParseErrorKind::InvalidConfigBlock => {}
-                    MoosParseErrorKind::MissingNewLine => {
+                    PlugParseErrorKind::InvalidConfigBlock => {}
+                    PlugParseErrorKind::MissingNewLine => {
                         let d = Diagnostic::new(
                             lsp_types::Range {
                                 start: lsp_types::Position {
@@ -203,8 +205,8 @@ impl Document {
                         );
                         self.diagnostics.push(d);
                     }
-                    MoosParseErrorKind::MissingTrailing(c) => {}
-                    MoosParseErrorKind::UnexpectedSymbol(c) => {}
+                    PlugParseErrorKind::MissingTrailing(c) => {}
+                    PlugParseErrorKind::UnexpectedSymbol(c) => {}
                     _ => {}
                 },
                 ParseError::UnrecognizedToken { token, expected } => {
@@ -273,7 +275,7 @@ impl TokenCollector {
 impl TokenListener for TokenCollector {
     fn handle_token(
         &mut self,
-        token: &nsplug_lexer::Token,
+        token: &nsplug::lexer::Token,
         start_loc: &lexers::Location,
         end_loc: &lexers::Location,
     ) {

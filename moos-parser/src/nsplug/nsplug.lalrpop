@@ -1,9 +1,8 @@
 use std::str::FromStr;
-use crate::helpers::remove_first_last;
-use crate::lexers::Location;
-use crate::nsplug_lexer::{State, Token};
-use crate::parser::{MacroDefinition, MacroCondition, MacroType, Line};
-use crate::error::MoosParseError;
+use crate::lexers::{Location, TokenRange};
+use crate::nsplug::error::PlugParseError;
+use crate::nsplug::lexer::{State, Token};
+use crate::nsplug::tree::{MacroDefinition, MacroCondition, MacroType, Line};
 use lalrpop_util::ErrorRecovery;
 
 //grammar<'input>(input: &'input str);
@@ -17,7 +16,7 @@ pub Line: Line<'input> = {
     //MacroElse => <>,
     //MacroEndif => <>,
     "EOL" => Line::EndOfLine,
-    <comment:"Comment"> => Line::Comment(comment),
+    //<comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
     <variable:"PlugVariable"> => Line::PlugVariable(variable),
     <variable:"PlugUpperVariable"> => Line::PlugUpperVariable(variable),
@@ -46,7 +45,7 @@ MacroElse: Line<'input> = {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     // TODO: Need to create a more descriptive error
-                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
                 },
                 dropped_tokens: vec![]
             };
@@ -64,7 +63,7 @@ MacroEndif: Line<'input> = {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     // TODO: Need to create a more descriptive error
-                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
                 },
                 dropped_tokens: vec![]
             };
@@ -82,7 +81,7 @@ MacroInclude: Line<'input> = {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     // TODO: Need to create a more descriptive error
-                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
                 },
                 dropped_tokens: vec![]
             };
@@ -97,7 +96,7 @@ MacroInclude: Line<'input> = {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     // TODO: Need to create a more descriptive error
-                    error: MoosParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
+                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
                 },
                 dropped_tokens: vec![]
             };
@@ -113,7 +112,7 @@ UnknownMacro: Line<'input> = {
      <l:@L> <m:"#unknown"> => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
-                    error: MoosParseError::new_unknown_macro(l, m)
+                    error: PlugParseError::new_unknown_macro(l, m)
                 },
                 dropped_tokens: vec![]
             };
@@ -122,16 +121,16 @@ UnknownMacro: Line<'input> = {
     }
 }
 
-Value: crate::parser::Value<'input> = {
-    <value:"bool"> => crate::parser::Value::Boolean(value.0, value.1),
-    <value:"int"> => crate::parser::Value::Integer(value.0, value.1),
-    <value:"float"> => crate::parser::Value::Float(value.0, value.1),
-    <value:"ValueString"> => crate::parser::Value::String(value),
-    <value:"Quote"> => crate::parser::Value::String(value),
-    <value:"PlugVariable"> => crate::parser::Value::PlugVariable(value),
-    <value:"PlugUpperVariable"> => crate::parser::Value::PlugUpperVariable(value),
-    <value:"PartialPlugVariable"> => crate::parser::Value::PartialPlugVariable(value),
-    <value:"PartialPlugUpperVariable"> => crate::parser::Value::PartialPlugUpperVariable(value),
+Value: crate::nsplug::tree::Value<'input> = {
+    <l:@L> <value:"bool"> <r:@R> => crate::nsplug::tree::Value::Boolean(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"int"> <r:@R> => crate::nsplug::tree::Value::Integer(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"float"> <r:@R> => crate::nsplug::tree::Value::Float(value.0, value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"ValueString"> <r:@R> => crate::nsplug::tree::Value::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"Quote"> <r:@R> => crate::nsplug::tree::Value::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"PlugVariable"> <r:@R> => crate::nsplug::tree::Value::PlugVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"PlugUpperVariable"> <r:@R> => crate::nsplug::tree::Value::PlugUpperVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"PartialPlugVariable"> <r:@R> => crate::nsplug::tree::Value::PartialPlugVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"PartialPlugUpperVariable"> <r:@R> => crate::nsplug::tree::Value::PartialPlugUpperVariable(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +139,7 @@ Value: crate::parser::Value<'input> = {
 
 extern {  
     type Location = crate::lexers::Location;
-    type Error = MoosParseError<'input>;
+    type Error = PlugParseError<'input>;
     
     enum Token<'input> {
         "Comment" => Token::Comment(<&'input str>),
