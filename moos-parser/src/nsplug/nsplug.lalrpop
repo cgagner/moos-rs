@@ -18,8 +18,8 @@ pub Line: Line<'input> = {
     "EOL" => Line::EndOfLine,
     //<comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
-    <variable:"PlugVariable"> => Line::PlugVariable(variable),
-    <variable:"PlugUpperVariable"> => Line::PlugUpperVariable(variable),
+    <l:@L> <variable:"PlugVariable"> => Line::PlugVariable{variable, line: l.line},
+    <l:@L> <variable:"PlugUpperVariable"> => Line::PlugUpperVariable{variable, line: l.line},
     ! => { state.errors.push(<>); Line::Error },
 }
 
@@ -30,7 +30,12 @@ pub Line: Line<'input> = {
 
 
 MacroDefine: Line<'input> = {
-    <d:"#define"> <def:MacroDefinition> <comment:"Comment"?> "EOL" => Line::Macro(MacroType::Define(def), comment),
+    <ml:@L> <d:"#define"> <mr:@R> <definition:MacroDefinition> <comment:"Comment"?> "EOL" => 
+        Line::Macro{
+            macro_type: MacroType::Define{definition, range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment, 
+            line: ml.line,
+        },
 }
 
 MacroDefinition: MacroDefinition<'input> = {
@@ -40,7 +45,7 @@ MacroDefinition: MacroDefinition<'input> = {
 }
 
 MacroElse: Line<'input> = {
-    <d:"#else"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+    <ml:@L> <d:"#else"> <mr:@R> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
         if !extras.is_empty() {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -52,13 +57,17 @@ MacroElse: Line<'input> = {
             state.errors.push(e);
             Line::Error
         } else {
-            Line::Macro(MacroType::Else, comment)
+            Line::Macro{
+                macro_type: MacroType::Else{range: TokenRange::new_line(ml,mr).unwrap()}, 
+                comment,
+                line: ml.line,
+            }
         }
     },
 }
 
 MacroEndif: Line<'input> = {
-    <d:"#endif"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+    <ml:@L> <d:"#endif"> <mr:@R> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
         if !extras.is_empty() {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -70,13 +79,17 @@ MacroEndif: Line<'input> = {
             state.errors.push(e);
             Line::Error
         } else {
-            Line::Macro(MacroType::EndIf, comment)
+            Line::Macro{
+                macro_type: MacroType::EndIf{range: TokenRange::new_line(ml,mr).unwrap()}, 
+                comment,
+                line: ml.line,
+            }
         }
     },
 }
 
 MacroInclude: Line<'input> = {
-    <d:"#include"> <path:"ValueString"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+    <ml:@L> <d:"#include"> <mr:@R> <path:"ValueString"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
         if !extras.is_empty() {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -88,10 +101,14 @@ MacroInclude: Line<'input> = {
             state.errors.push(e);
             Line::Error
         } else {
-            Line::Macro(MacroType::Include(path), comment)
+            Line::Macro{
+                macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
+                comment,
+                line: ml.line,
+            }
         }
     }, 
-    <d:"#include"> <path:"Quote"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
+    <ml:@L> <d:"#include"> <mr:@R> <path:"Quote"> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
         if !extras.is_empty() {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -103,7 +120,11 @@ MacroInclude: Line<'input> = {
             state.errors.push(e);
             Line::Error
         } else {
-            Line::Macro(MacroType::Include(path), comment)
+            Line::Macro{
+                macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
+                comment,
+                line: ml.line,
+            }
         }
     }, 
 }

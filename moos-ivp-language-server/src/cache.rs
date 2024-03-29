@@ -8,7 +8,7 @@ use moos_parser::{
     nsplug::{
         self,
         error::{PlugParseError, PlugParseErrorKind},
-        lexer::{State, Token, TokenListener},
+        lexer::{State, Token},
     },
     Lexer, LinesParser, ParseError, PlugParser,
 };
@@ -152,7 +152,7 @@ pub struct Document {
     uri: Url,
     text: String,
     file_type: FileType,
-    token_collector: TokenCollector,
+    semantic_tokens: TokenMap<SemanticTokenInfo>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -162,7 +162,7 @@ impl Document {
             uri,
             text,
             file_type: FileType::Other,
-            token_collector: TokenCollector::new(),
+            semantic_tokens: TokenMap::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -173,13 +173,113 @@ impl Document {
         info!("Parsing: {:?}", &self.text);
 
         let mut lexer = moos_parser::nsplug::lexer::Lexer::new(&self.text);
-        lexer.add_listener(&mut self.token_collector);
         let mut state = moos_parser::nsplug::lexer::State::default();
         let result = PlugParser::new().parse(&mut state, &self.text, lexer);
+
+        info!("Parse Results: {result:?}");
+
+        use moos_parser::nsplug::tree::Line::*;
+        use moos_parser::nsplug::tree::MacroType;
+        if let Ok(lines) = result {
+            for l in lines {
+                match l {
+                    Macro {
+                        macro_type,
+                        comment,
+                        line,
+                    } => {
+                        match macro_type {
+                            MacroType::Define { definition, range } => {
+                                // TODO: Add declaration, definition, and references
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::Include { path, range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::IfDef { range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::IfNotDef { range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::ElseIfDef { range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::Else { range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                            MacroType::EndIf { range } => {
+                                //
+                                self.semantic_tokens.insert(
+                                    line,
+                                    range,
+                                    SemanticTokenInfo {
+                                        token_type: TokenTypes::Macro as u32,
+                                        token_modifiers: 0,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    PlugVariable { variable, line } => {
+                        // TODO: Add a reference to the variable
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         let iter = self.diagnostics.iter();
         // TODO: Add new method to handle converting errors into diagnostics
         // TODO: Only create diagnostics if the client supports diagnostics
+        // TODO: Need to handle dropped tokens
         for e in state.errors {
             match e.error {
                 ParseError::User { error } => match error.kind {
@@ -239,287 +339,254 @@ impl Document {
     pub fn get_semantic_tokens(&self) -> SemanticTokens {
         let mut tokens = SemanticTokens::default();
 
-        self.token_collector
-            .semantic_tokens
-            .relative_iter()
-            .for_each(|token| {
-                tokens.data.push(SemanticToken {
-                    delta_line: token.delta_line,
-                    delta_start: token.delta_start,
-                    length: token.length,
-                    token_type: token.token.token_type,
-                    token_modifiers_bitset: token.token.token_modifiers,
-                });
+        self.semantic_tokens.relative_iter().for_each(|token| {
+            tokens.data.push(SemanticToken {
+                delta_line: token.delta_line,
+                delta_start: token.delta_start,
+                length: token.length,
+                token_type: token.token.token_type,
+                token_modifiers_bitset: token.token.token_modifiers,
             });
+        });
 
         return tokens;
     }
 
     pub fn clear(&mut self) {
-        self.token_collector.semantic_tokens.clear();
+        self.semantic_tokens.clear();
         self.diagnostics.clear();
     }
 }
 
-#[derive(Debug, Default)]
-struct TokenCollector {
-    pub semantic_tokens: TokenMap<SemanticTokenInfo>,
+/*
+Token::Comment(_comment) => Some(SemanticTokenInfo {
+    token_type: TokenTypes::Comment as u32,
+    token_modifiers: 0,
+}),
+Token::PlugVariable(_name) | Token::PlugUpperVariable(_name) => {
+    Some(SemanticTokenInfo {
+        token_type: TokenTypes::Variable as u32,
+        token_modifiers: 0,
+    })
 }
-impl TokenCollector {
-    pub fn new() -> Self {
-        Self {
-            semantic_tokens: TokenMap::<SemanticTokenInfo>::new(),
+Token::Float(_, _) | Token::Integer(_, _) => Some(SemanticTokenInfo {
+    token_type: TokenTypes::Number as u32,
+    token_modifiers: 0,
+}),
+Token::MacroDefine
+| Token::MacroElse
+| Token::MacroElseIfDef
+| Token::MacroEndIf
+| Token::MacroIfDef
+| Token::MacroIfNotDef
+| Token::MacroInclude => Some(SemanticTokenInfo {
+    token_type: TokenTypes::Macro as u32,
+    token_modifiers: 0,
+}),
+Token::Quote(_value) => Some(SemanticTokenInfo {
+    token_type: TokenTypes::String as u32,
+    token_modifiers: 0,
+}),
+Token::PartialQuote(_value, _c) => Some(SemanticTokenInfo {
+    token_type: TokenTypes::String as u32,
+    token_modifiers: 0,
+}),
+
+Token::BlockKeyword(key) => {
+    // TODO:  This should check the value of name for the current
+    // application
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Keyword as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::Key(name) => {
+    let mut found_keyword = false;
+
+    if let Some(app) = &self.current_app {
+        if self.keywords.contains(name.to_lowercase().as_str()) {
+            found_keyword = true;
+        }
+        // TODO:  This should check the value of name for the current
+        // application
+    } else {
+        if self.global_keywords.contains(name.to_lowercase().as_str()) {
+            found_keyword = true;
         }
     }
-}
-impl TokenListener for TokenCollector {
-    fn handle_token(
-        &mut self,
-        token: &nsplug::lexer::Token,
-        start_loc: &lexers::Location,
-        end_loc: &lexers::Location,
-    ) {
-        // This method seems flawed.
-        // PartialQuotes and PartialVariables seems to break
 
-        let token_info = match token {
-            Token::Comment(_comment) => Some(SemanticTokenInfo {
-                token_type: TokenTypes::Comment as u32,
-                token_modifiers: 0,
-            }),
-            Token::PlugVariable(_name) | Token::PlugUpperVariable(_name) => {
-                Some(SemanticTokenInfo {
-                    token_type: TokenTypes::Variable as u32,
-                    token_modifiers: 0,
-                })
-            }
-            Token::Float(_, _) | Token::Integer(_, _) => Some(SemanticTokenInfo {
-                token_type: TokenTypes::Number as u32,
-                token_modifiers: 0,
-            }),
-            Token::MacroDefine
-            | Token::MacroElse
-            | Token::MacroElseIfDef
-            | Token::MacroEndIf
-            | Token::MacroIfDef
-            | Token::MacroIfNotDef
-            | Token::MacroInclude => Some(SemanticTokenInfo {
-                token_type: TokenTypes::Macro as u32,
-                token_modifiers: 0,
-            }),
-            Token::Quote(_value) => Some(SemanticTokenInfo {
-                token_type: TokenTypes::String as u32,
-                token_modifiers: 0,
-            }),
-            Token::PartialQuote(_value, _c) => Some(SemanticTokenInfo {
-                token_type: TokenTypes::String as u32,
-                token_modifiers: 0,
-            }),
-            /*
-            Token::BlockKeyword(key) => {
-                // TODO:  This should check the value of name for the current
-                // application
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Keyword as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::Key(name) => {
-                let mut found_keyword = false;
+    if found_keyword {
+        self.cache.semantic_tokens.push(SemanticToken {
+            delta_line: delta_line,
+            delta_start: delta_index,
+            length: length,
+            token_type: TokenTypes::Variable as u32,
+            token_modifiers_bitset: 0,
+        });
 
-                if let Some(app) = &self.current_app {
-                    if self.keywords.contains(name.to_lowercase().as_str()) {
-                        found_keyword = true;
-                    }
-                    // TODO:  This should check the value of name for the current
-                    // application
-                } else {
-                    if self.global_keywords.contains(name.to_lowercase().as_str()) {
-                        found_keyword = true;
-                    }
-                }
-
-                if found_keyword {
-                    self.cache.semantic_tokens.push(SemanticToken {
-                        delta_line: delta_line,
-                        delta_start: delta_index,
-                        length: length,
-                        token_type: TokenTypes::Variable as u32,
-                        token_modifiers_bitset: 0,
-                    });
-
-                    added = true;
-                }
-            }
-            Token::EnvVariable(name)
-            | Token::PlugVariable((name))
-            | Token::PlugUpperVariable(name) => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Variable as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::PartialEnvVariable(value)
-            | Token::PartialPlugVariable(value)
-            | Token::PartialPlugUpperVariable(value) => {
-                let bracket = match token {
-                    Token::PartialEnvVariable(_) => '}',
-                    Token::PartialPlugVariable(_) | Token::PartialPlugUpperVariable(_) => ')',
-                    _ => '}',
-                };
-                let d = Diagnostic::new(
-                    lsp_types::Range {
-                        start: lsp_types::Position {
-                            line: start_loc.line,
-                            character: start_loc.index,
-                        },
-                        end: lsp_types::Position {
-                            line: end_loc.line,
-                            character: end_loc.index,
-                        },
-                    },
-                    Some(DiagnosticSeverity::ERROR),
-                    None,
-                    None,
-                    format!("Missing closing bracket for variable: '{}'", bracket).to_owned(),
-                    None,
-                    None,
-                );
-                self.cache.diagnostics.push(d);
-
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line,
-                    delta_start: delta_index,
-                    length,
-                    token_type: TokenTypes::Variable as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::Quote(value) => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line,
-                    delta_start: delta_index,
-                    length,
-                    token_type: TokenTypes::String as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::PartialQuote(value, c) => {
-                let d = Diagnostic::new(
-                    lsp_types::Range {
-                        start: lsp_types::Position {
-                            line: start_loc.line,
-                            character: start_loc.index,
-                        },
-                        end: lsp_types::Position {
-                            line: end_loc.line,
-                            character: end_loc.index,
-                        },
-                    },
-                    Some(DiagnosticSeverity::ERROR),
-                    None,
-                    None,
-                    format!("Missing closing quote mark: {}", c),
-                    None,
-                    None,
-                );
-                self.cache.diagnostics.push(d);
-
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line,
-                    delta_start: delta_index,
-                    length,
-                    token_type: TokenTypes::String as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::UnknownMacro(value) => {
-                let d = Diagnostic::new(
-                    lsp_types::Range {
-                        start: lsp_types::Position {
-                            line: start_loc.line,
-                            character: start_loc.index,
-                        },
-                        end: lsp_types::Position {
-                            line: end_loc.line,
-                            character: end_loc.index,
-                        },
-                    },
-                    Some(DiagnosticSeverity::ERROR),
-                    None,
-                    None,
-                    format!("Unknown macro: {}", value),
-                    None,
-                    None,
-                );
-                self.cache.diagnostics.push(d);
-
-                // added = true;
-            }
-            Token::Float(_, _) | Token::Integer(_, _) => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Number as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::Boolean(_, _) => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Keyword as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::DefineKeyword => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Macro as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            Token::OrOperator | Token::AndOperator => {
-                self.cache.semantic_tokens.push(SemanticToken {
-                    delta_line: delta_line,
-                    delta_start: delta_index,
-                    length: length,
-                    token_type: TokenTypes::Operator as u32,
-                    token_modifiers_bitset: 0,
-                });
-                added = true;
-            }
-            // TODO: We should differentiate between environment variables and
-            // regular variables
-            _ => {}
-            */
-            _ => None,
-        };
-
-        if let Some(token_info) = token_info {
-            self.semantic_tokens
-                .insert(*start_loc, *end_loc, token_info);
-        }
+        added = true;
     }
 }
+Token::EnvVariable(name)
+| Token::PlugVariable((name))
+| Token::PlugUpperVariable(name) => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Variable as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::PartialEnvVariable(value)
+| Token::PartialPlugVariable(value)
+| Token::PartialPlugUpperVariable(value) => {
+    let bracket = match token {
+        Token::PartialEnvVariable(_) => '}',
+        Token::PartialPlugVariable(_) | Token::PartialPlugUpperVariable(_) => ')',
+        _ => '}',
+    };
+    let d = Diagnostic::new(
+        lsp_types::Range {
+            start: lsp_types::Position {
+                line: start_loc.line,
+                character: start_loc.index,
+            },
+            end: lsp_types::Position {
+                line: end_loc.line,
+                character: end_loc.index,
+            },
+        },
+        Some(DiagnosticSeverity::ERROR),
+        None,
+        None,
+        format!("Missing closing bracket for variable: '{}'", bracket).to_owned(),
+        None,
+        None,
+    );
+    self.cache.diagnostics.push(d);
+
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line,
+        delta_start: delta_index,
+        length,
+        token_type: TokenTypes::Variable as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::Quote(value) => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line,
+        delta_start: delta_index,
+        length,
+        token_type: TokenTypes::String as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::PartialQuote(value, c) => {
+    let d = Diagnostic::new(
+        lsp_types::Range {
+            start: lsp_types::Position {
+                line: start_loc.line,
+                character: start_loc.index,
+            },
+            end: lsp_types::Position {
+                line: end_loc.line,
+                character: end_loc.index,
+            },
+        },
+        Some(DiagnosticSeverity::ERROR),
+        None,
+        None,
+        format!("Missing closing quote mark: {}", c),
+        None,
+        None,
+    );
+    self.cache.diagnostics.push(d);
+
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line,
+        delta_start: delta_index,
+        length,
+        token_type: TokenTypes::String as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::UnknownMacro(value) => {
+    let d = Diagnostic::new(
+        lsp_types::Range {
+            start: lsp_types::Position {
+                line: start_loc.line,
+                character: start_loc.index,
+            },
+            end: lsp_types::Position {
+                line: end_loc.line,
+                character: end_loc.index,
+            },
+        },
+        Some(DiagnosticSeverity::ERROR),
+        None,
+        None,
+        format!("Unknown macro: {}", value),
+        None,
+        None,
+    );
+    self.cache.diagnostics.push(d);
+
+    // added = true;
+}
+Token::Float(_, _) | Token::Integer(_, _) => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Number as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::Boolean(_, _) => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Keyword as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::DefineKeyword => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Macro as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+Token::OrOperator | Token::AndOperator => {
+    self.cache.semantic_tokens.push(SemanticToken {
+        delta_line: delta_line,
+        delta_start: delta_index,
+        length: length,
+        token_type: TokenTypes::Operator as u32,
+        token_modifiers_bitset: 0,
+    });
+    added = true;
+}
+// TODO: We should differentiate between environment variables and
+// regular variables
+_ => {}
+*/
 
 struct Delcaration {}
 

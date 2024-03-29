@@ -61,12 +61,7 @@ pub enum Token<'input> {
     EOF,
 }
 
-pub trait TokenListener {
-    fn handle_token(&mut self, token: &Token, start_loc: &Location, end_loc: &Location);
-}
-
-pub struct Lexer<'input, 'listen> {
-    token_listeners: Vec<&'listen mut dyn TokenListener>,
+pub struct Lexer<'input> {
     iter: std::iter::Zip<
         CharIndices<'input>,
         Chain<Skip<CharIndices<'input>>, Repeat<(usize, char)>>,
@@ -82,7 +77,7 @@ pub struct Lexer<'input, 'listen> {
     token_queue: TokenQueue<'input>,
 }
 
-impl<'input, 'listen> Lexer<'input, 'listen> {
+impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
         // Create a Zip iterator to allow looking that the current character
         // and the next character
@@ -96,7 +91,6 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
 
         let previous_index = Some(0);
         Lexer {
-            token_listeners: vec![],
             iter,
             input,
             previous_index,
@@ -108,14 +102,6 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
             trim_end: false,
             token_queue: TokenQueue::new(),
         }
-    }
-
-    pub fn add_listener(&mut self, token_listener: &'listen mut dyn TokenListener) {
-        self.token_listeners.push(token_listener);
-    }
-
-    pub fn clear_listeners(&mut self) {
-        self.token_listeners.clear();
     }
 
     #[inline]
@@ -684,8 +670,11 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         // NOTE: There could still be tokens to be parse, but we don't care
         // about them.
     }
+}
 
-    fn _next(&mut self) -> Option<Spanned<Token<'input>, Location, PlugParseError<'input>>> {
+impl<'input> Iterator for Lexer<'input> {
+    type Item = Spanned<Token<'input>, Location, PlugParseError<'input>>;
+    fn next(&mut self) -> Option<Self::Item> {
         if let Some(token) = self.token_queue.pop_front() {
             return Some(token);
         }
@@ -696,19 +685,5 @@ impl<'input, 'listen> Lexer<'input, 'listen> {
         } else {
             None
         }
-    }
-}
-
-impl<'input, 'listen> Iterator for Lexer<'input, 'listen> {
-    type Item = Spanned<Token<'input>, Location, PlugParseError<'input>>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let rtn = self._next();
-
-        for listener in &mut self.token_listeners {
-            if let Some(Ok((start_loc, token, end_loc))) = rtn {
-                listener.handle_token(&token, &start_loc, &end_loc);
-            }
-        }
-        return rtn;
     }
 }

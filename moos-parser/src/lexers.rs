@@ -147,34 +147,15 @@ mod token_map {
             self.line_map.clear();
         }
 
-        /// Insert a new token with the range between `start` and `end`. The
-        /// `end` location is expected to be exclusive. Both `start` and
-        /// `end` must be on the same line.
-        ///
-        /// This method handles splitting the range so it does not conflict
-        /// with existing tokens. It gives precedence to the existing tokens.
-        /// It will *NOT* merge the token data since this structure does not
-        /// know the data type.
-        ///
-        /// Returns `true` if the item was inserted; false otherwise.
-        pub fn insert(&mut self, start: Location, end: Location, data: T) -> bool {
-            if start.line != end.line {
-                return false;
-            }
-
-            let range = match TokenRange::new(start.index, end.index) {
-                Some(r) => r,
-                None => return false,
-            };
-
-            let tokens = match self.line_map.get_mut(&start.line) {
+        pub fn insert(&mut self, line: u32, range: TokenRange, data: T) -> bool {
+            let tokens = match self.line_map.get_mut(&line) {
                 Some(tokens) => tokens,
                 None => {
                     // If we don't have any tokens in the current line, just
                     // insert a new Vec containing the current range and data.
                     let mut tokens = BTreeMap::new();
                     tokens.insert(range, data);
-                    self.line_map.insert(start.line, tokens);
+                    self.line_map.insert(line, tokens);
                     return true;
                 }
             };
@@ -263,6 +244,29 @@ mod token_map {
             }
 
             return true;
+        }
+
+        /// Insert a new token with the range between `start` and `end`. The
+        /// `end` location is expected to be exclusive. Both `start` and
+        /// `end` must be on the same line.
+        ///
+        /// This method handles splitting the range so it does not conflict
+        /// with existing tokens. It gives precedence to the existing tokens.
+        /// It will *NOT* merge the token data since this structure does not
+        /// know the data type.
+        ///
+        /// Returns `true` if the item was inserted; false otherwise.
+        pub fn insert_location(&mut self, start: Location, end: Location, data: T) -> bool {
+            if start.line != end.line {
+                return false;
+            }
+
+            let range = match TokenRange::new(start.index, end.index) {
+                Some(r) => r,
+                None => return false,
+            };
+
+            return self.insert(start.line, range, data);
         }
 
         /// Gets an iterator for the `TokenMap`
@@ -563,33 +567,33 @@ mod test {
         // This ${FOO} is a Test ${BAR} comment
         //
         // ${BAZ} another comment
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(0, 8),
             Location::new(0, 14),
             "Variable(FOO)".to_string(),
         );
         assert!(inserted);
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(0, 25),
             Location::new(0, 31),
             "Variable(BAR)".to_string(),
         );
         assert!(inserted);
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(0, 0),
             Location::new(0, 39),
             "Comment".to_string(),
         );
         assert!(inserted);
 
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(2, 3),
             Location::new(2, 9),
             "Variable(BAZ)".to_string(),
         );
         assert!(inserted);
 
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(2, 0),
             Location::new(2, 9),
             "Comment".to_string(),
@@ -597,7 +601,7 @@ mod test {
         assert!(inserted);
 
         // Dummy insert - This should fail
-        let inserted = tokens.insert(
+        let inserted = tokens.insert_location(
             Location::new(0, 0),
             Location::new(0, 25),
             "Comment".to_string(),

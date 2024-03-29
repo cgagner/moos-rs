@@ -23,7 +23,7 @@ lalrpop_mod!(
 pub type LinesParser = moos::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type PlugLexer<'input, 'listen> = nsplug::lexer::Lexer<'input, 'listen>;
+pub type PlugLexer<'input> = nsplug::lexer::Lexer<'input>;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugParser = nsplug::nsplug::LinesParser;

@@ -118,13 +118,29 @@ impl<'input> Values<'input> {
 
 #[derive(Debug)]
 pub enum MacroType<'input> {
-    Define(MacroDefinition<'input>),
-    Include(&'input str),
-    IfDef,
-    IfNotDef,
-    ElseIfDef,
-    Else,
-    EndIf,
+    Define {
+        definition: MacroDefinition<'input>,
+        range: TokenRange,
+    },
+    Include {
+        path: &'input str,
+        range: TokenRange,
+    },
+    IfDef {
+        range: TokenRange,
+    },
+    IfNotDef {
+        range: TokenRange,
+    },
+    ElseIfDef {
+        range: TokenRange,
+    },
+    Else {
+        range: TokenRange,
+    },
+    EndIf {
+        range: TokenRange,
+    },
 }
 
 #[derive(Debug)]
@@ -159,14 +175,29 @@ pub enum MacroCondition<'input> {
 
 #[derive(Debug)]
 pub enum Line<'input> {
-    Comment(&'input str),
-    Define(&'input str, Value<'input>, Option<&'input str>),
-    BlockBegin(&'input str, Option<&'input str>),
-    BlockEnd(Option<&'input str>),
-    Assignment(Vec<Value<'input>>, Vec<Value<'input>>, Option<&'input str>),
-    Macro(MacroType<'input>, Option<&'input str>),
-    PlugVariable(&'input str),
-    PlugUpperVariable(&'input str),
+    Comment {
+        comment: &'input str,
+        line: u32,
+    },
+    Define {
+        name: &'input str,
+        value: Value<'input>,
+        comment: Option<&'input str>,
+        line: u32,
+    },
+    Macro {
+        macro_type: MacroType<'input>,
+        comment: Option<&'input str>,
+        line: u32,
+    },
+    PlugVariable {
+        variable: &'input str,
+        line: u32,
+    },
+    PlugUpperVariable {
+        variable: &'input str,
+        line: u32,
+    },
     Error,
     EndOfLine,
 }
