@@ -437,12 +437,12 @@ impl<'input> Lexer<'input> {
                         if !unhandled.is_empty() {
                             self.scan_value(unhandled, prev_i);
                             has_whitespace = false;
+                            self.push_token(i, Token::Space, i + 1);
                         }
                         self.previous_index = self.get_safe_index(i + 1);
                     }
                     self.trim_start = true;
 
-                    self.push_token(i, Token::Space, i + 1);
                     self.previous_index = self.get_safe_index(i + 1);
                 }
                 _ => {}

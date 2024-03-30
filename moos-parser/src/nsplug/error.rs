@@ -62,7 +62,7 @@ impl<'input> PlugParseError<'input> {
             loc_start,
             loc_end: Location {
                 line: loc_start.line,
-                index: loc_start.index + macro_name.len() as u32,
+                index: loc_start.index + (macro_name.len() as u32) + 1_u32,
             },
         }
     }
@@ -72,7 +72,6 @@ impl<'input> PlugParseError<'input> {
 pub enum PlugParseErrorKind<'input> {
     MissingTrailing(char),
     MissingNewLine,
-    InvalidConfigBlock,
     UnexpectedComment(&'input str),
     UnexpectedSymbol(char),
     UnknownMacro(&'input str),

@@ -47,6 +47,7 @@
 mod cache;
 mod handler;
 mod lsp;
+mod parsers;
 mod tracer;
 mod trees;
 

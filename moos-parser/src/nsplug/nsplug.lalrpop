@@ -8,13 +8,14 @@ use lalrpop_util::ErrorRecovery;
 //grammar<'input>(input: &'input str);
 grammar<'s, 'input>(state: &'s mut State<'input>, input: &'input str);
 
-pub Lines: Vec<Line<'input>> = <Line*>;
+pub Lines: tree::Lines<'input> = {
+    <Line*> => <>.into()
+}
 
 pub Line: Line<'input> = {
+    IfDef => <>,
     MacroDefine => <>,
     MacroInclude => <>,
-    //MacroElse => <>,
-    //MacroEndif => <>,
     "EOL" => Line::EndOfLine,
     //<comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
@@ -38,53 +39,12 @@ MacroDefine: Line<'input> = {
 }
 
 MacroDefinition: MacroDefinition<'input> = {
-    <name:Value+> " " <value:Value*> => {
+    <name:VariableString+> " "+ <value:Value+> => {
         MacroDefinition::new(name.into(), value.into())
+    },
+    <name:VariableString+> " "* => {
+        MacroDefinition::new(name.into(), Vec::new().into())
     }
-}
-
-MacroElse: Line<'input> = {
-    <ml:@L> <d:"#else"> <mr:@R> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
-        if !extras.is_empty() {
-            let e = lalrpop_util::ErrorRecovery { 
-                error: lalrpop_util::ParseError::User {
-                    // TODO: Need to create a more descriptive error
-                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
-                },
-                dropped_tokens: vec![]
-            };
-            state.errors.push(e);
-            Line::Error
-        } else {
-            Line::Macro{
-                macro_type: MacroType::Else{range: TokenRange::new_line(ml,mr).unwrap()}, 
-                comment,
-                line: ml.line,
-            }
-        }
-    },
-}
-
-MacroEndif: Line<'input> = {
-    <ml:@L> <d:"#endif"> <mr:@R> <l:@L> <extras:Value*> <r:@R> <comment:"Comment"?> "EOL" => {
-        if !extras.is_empty() {
-            let e = lalrpop_util::ErrorRecovery { 
-                error: lalrpop_util::ParseError::User {
-                    // TODO: Need to create a more descriptive error
-                    error: PlugParseError::new_missing_new_line(l, Location{line: r.line, index: r.index+1})
-                },
-                dropped_tokens: vec![]
-            };
-            state.errors.push(e);
-            Line::Error
-        } else {
-            Line::Macro{
-                macro_type: MacroType::EndIf{range: TokenRange::new_line(ml,mr).unwrap()}, 
-                comment,
-                line: ml.line,
-            }
-        }
-    },
 }
 
 MacroInclude: Line<'input> = {
@@ -106,7 +66,6 @@ MacroInclude: Line<'input> = {
         
     }, 
     // TODO: Need to add support for `#include filename <tag>`
-    
 }
 
 UnknownMacro: Line<'input> = {
@@ -160,6 +119,61 @@ IncludePath: tree::IncludePath<'input> = {
      <l:@L> <content: VariableString+> <r:@R> => tree::IncludePath::VariableStrings(content.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
     Quote => tree::IncludePath::Quote(<>),
 }
+
+IfDef: Line<'input> = {
+    <ml:@L> "#ifdef" <mr:@R> <condition:MacroCondition> "EOL" <body:Lines> <branch: IfDefBranch> => 
+        Line::Macro{
+            macro_type: MacroType::IfDef{
+                condition,
+                branch: branch,
+                body,
+                range: TokenRange::new_line(ml,mr).unwrap(),
+                }, 
+            comment: None, 
+            line: ml.line,
+        },
+}
+
+IfDefBranch: tree::IfDefBranch<'input> = {
+    <ml:@L> "#elseifdef" <mr:@R> <condition:MacroCondition> "EOL" <body:Lines> <branch: IfDefBranch> => 
+        tree::IfDefBranch::ElseIfDef {
+            line: ml.line,
+            macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            condition,
+            body,
+            branch: Box::new(branch),
+        },
+    <ml:@L> "#else" <mr:@R>  "EOL" <body:Lines> <endl:@L> "#endif" <endr:@R> => 
+        tree::IfDefBranch::Else {
+            line: ml.line,
+            macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            body,
+            endif_line: endl.line,
+            endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
+        },
+    <ml:@L> "#endif" <mr:@R> "EOL" => 
+        tree::IfDefBranch::EndIf {
+            line: ml.line,
+            macro_range: TokenRange::new_line(ml,mr).unwrap(),
+        },
+}
+
+MacroCondition: tree::MacroCondition<'input> = {
+    MacroDefinition => tree::MacroCondition::Simple(<>),
+    <lhs: MacroDefinition> <l:@L> "||" <r:@R> <rhs: MacroCondition> => 
+        tree::MacroCondition::Disjunction{
+            operator_range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `MacroCondition`"),
+            lhs,
+            rhs: Box::new(rhs),
+        },
+    <lhs: MacroDefinition> <l:@L> "&&" <r:@R> <rhs: MacroCondition> => 
+        tree::MacroCondition::Conjunction{
+            operator_range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `MacroCondition`"),
+            lhs,
+            rhs: Box::new(rhs),
+        },
+}
+
 
 // ---------------------------------------------------------------------------
 // Token Definitions 

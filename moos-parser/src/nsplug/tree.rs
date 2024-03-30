@@ -55,7 +55,7 @@ impl<'input> TryFrom<Value<'input>> for Variable<'input> {
 // Declares a new struct Values that wraps a Vec<Value>
 vec_wrapper!(Values, Value);
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Variable<'input> {
     Regular {
         text: &'input str,
@@ -85,10 +85,28 @@ impl<'input> ToString for Variable<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VariableString<'input> {
     String(&'input str, TokenRange),
     Variable(Variable<'input>),
+}
+
+impl<'input> VariableString<'input> {
+    #[inline]
+    pub fn is_string(&self) -> bool {
+        match *self {
+            VariableString::String(_, _) => true,
+            VariableString::Variable(_) => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_variable(&self) -> bool {
+        match *self {
+            VariableString::String(_, _) => false,
+            VariableString::Variable(_) => true,
+        }
+    }
 }
 
 impl<'input> ToString for VariableString<'input> {
@@ -173,6 +191,9 @@ pub enum MacroType<'input> {
         range: TokenRange,
     },
     IfDef {
+        condition: MacroCondition<'input>,
+        branch: IfDefBranch<'input>,
+        body: Lines<'input>,
         /// Range of the "#ifdef"
         range: TokenRange,
     },
@@ -194,21 +215,45 @@ pub enum MacroType<'input> {
     },
 }
 
+impl<'input> ToString for MacroType<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            MacroType::Define { definition, range } => {
+                format!("#define {}", definition.to_string())
+            }
+            MacroType::Include { path, range } => {
+                format!("#include {}", path.to_string())
+            }
+            MacroType::IfDef {
+                condition,
+                branch,
+                body,
+                range,
+            } => {
+                // TODO: Need to recursively print the branch and lines
+                format!("#ifdef {}", condition.to_string())
+            }
+            _ => "".to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MacroDefinition<'input> {
-    name: Values<'input>,
-    value: Values<'input>,
+    pub name: VariableStrings<'input>,
+    pub value: Values<'input>,
 }
 
 impl<'input> MacroDefinition<'input> {
     /// Create a new MacroDefinition
-    pub fn new(name: Values<'input>, value: Values<'input>) -> Self {
+    pub fn new(name: VariableStrings<'input>, value: Values<'input>) -> Self {
         MacroDefinition { name, value }
     }
+}
 
-    pub fn eval() -> bool {
-        // TODO: Implement
-        false
+impl<'input> ToString for MacroDefinition<'input> {
+    fn to_string(&self) -> String {
+        return format!("{} {}", self.name.to_string(), self.value.to_string());
     }
 }
 
@@ -217,23 +262,89 @@ pub enum MacroCondition<'input> {
     // Simple Definition
     Simple(MacroDefinition<'input>),
     // Disjunction Expression (a.k.a. Logical-Or)
-    Disjunction(Vec<MacroDefinition<'input>>),
+    Disjunction {
+        operator_range: TokenRange,
+        lhs: MacroDefinition<'input>,
+        rhs: Box<MacroCondition<'input>>,
+    },
     // Conjunction Expression (a.k.a. Logical-And)
-    Conjunction(Vec<MacroDefinition<'input>>),
-    // Mixture of Disjunction and Conjunction - This is an error or false
-    Mixed(Vec<MacroDefinition<'input>>),
+    Conjunction {
+        operator_range: TokenRange,
+        lhs: MacroDefinition<'input>,
+        rhs: Box<MacroCondition<'input>>,
+    },
+}
+
+impl<'input> ToString for MacroCondition<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            MacroCondition::Simple(condition) => condition.to_string(),
+            MacroCondition::Disjunction {
+                operator_range: _,
+                lhs,
+                rhs,
+            } => format!("{} || {}", lhs.to_string(), rhs.to_string()),
+            MacroCondition::Conjunction {
+                operator_range: _,
+                lhs,
+                rhs,
+            } => format!("{} && {}", lhs.to_string(), rhs.to_string()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum IfDefBranch<'input> {
+    ElseIfDef {
+        line: u32,
+        macro_range: TokenRange,
+        condition: MacroCondition<'input>,
+        body: Lines<'input>,
+        branch: Box<IfDefBranch<'input>>,
+    },
+    Else {
+        line: u32,
+        macro_range: TokenRange,
+        body: Lines<'input>,
+        endif_line: u32,
+        endif_macro_range: TokenRange,
+    },
+    EndIf {
+        line: u32,
+        macro_range: TokenRange,
+    },
+}
+
+impl<'input> ToString for IfDefBranch<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            IfDefBranch::ElseIfDef {
+                line,
+                macro_range,
+                condition,
+                body,
+                branch,
+            } => {
+                format!("#elsifdef {}", condition.to_string())
+            }
+            IfDefBranch::Else {
+                line,
+                macro_range,
+                body,
+                endif_line,
+                endif_macro_range,
+            } => "#else".to_string(),
+            IfDefBranch::EndIf { line, macro_range } => "#endif".to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum Line<'input> {
+    /// NOTE: Comments are not really supported by NSPlug. We have them here
+    /// because they might be soon.
     Comment {
         comment: &'input str,
-        line: u32,
-    },
-    Define {
-        name: &'input str,
-        value: Value<'input>,
-        comment: Option<&'input str>,
         line: u32,
     },
     Macro {
@@ -248,6 +359,32 @@ pub enum Line<'input> {
     Error,
     EndOfLine,
 }
+
+impl<'input> ToString for Line<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            Line::Comment { comment, line } => {
+                format!("// {comment}")
+            }
+            Line::Macro {
+                macro_type,
+                comment,
+                line,
+            } => {
+                if let Some(comment) = comment {
+                    format!("{} // {comment}", macro_type.to_string())
+                } else {
+                    macro_type.to_string()
+                }
+            }
+            Line::Variable { variable, line } => todo!(),
+            Line::Error => "".to_string(),
+            Line::EndOfLine => "".to_string(),
+        }
+    }
+}
+
+vec_wrapper!(Lines, Line);
 
 // ----------------------------------------------------------------------------
 // Tests
