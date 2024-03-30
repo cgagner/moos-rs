@@ -46,10 +46,17 @@ impl<'input> PlugParseError<'input> {
             loc_end,
         }
     }
+    pub fn new_missing_endif(loc_start: Location, loc_end: Location) -> PlugParseError<'input> {
+        PlugParseError {
+            kind: PlugParseErrorKind::MissingEndIf,
+            loc_start,
+            loc_end,
+        }
+    }
     pub fn new_missing_new_line(loc_start: Location, loc_end: Location) -> PlugParseError<'input> {
         PlugParseError {
             kind: PlugParseErrorKind::MissingNewLine,
-            loc_start: loc_start,
+            loc_start,
             loc_end,
         }
     }
@@ -70,6 +77,7 @@ impl<'input> PlugParseError<'input> {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PlugParseErrorKind<'input> {
+    MissingEndIf,
     MissingTrailing(char),
     MissingNewLine,
     UnexpectedComment(&'input str),

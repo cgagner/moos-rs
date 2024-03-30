@@ -14,13 +14,36 @@ pub Lines: tree::Lines<'input> = {
 
 pub Line: Line<'input> = {
     IfDef => <>,
+    IfNotDef => <>,
     MacroDefine => <>,
     MacroInclude => <>,
     "EOL" => Line::EndOfLine,
     //<comment:"Comment"> => Line::Comment(comment),
     UnknownMacro => <>,
     <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
-    ! => { state.errors.push(<>); Line::Error },
+    <l:@L> <error:!> <r:@R> => { 
+        match &error.error {
+            lalrpop_util::ParseError::UnrecognizedEOF { location, expected } => {
+                if expected.contains(&"\"#endif\"".to_string()) {
+                    let endl = if l.line < r.line {
+                        Location::new(l.line + 1, 0)
+                    } else {
+                        r
+                    };
+                    let new_error = lalrpop_util::ErrorRecovery { 
+                        error: lalrpop_util::ParseError::User {
+                            error: PlugParseError::new_missing_endif(l, endl)
+                        },
+                        dropped_tokens: vec![]
+                    };
+                    state.errors.push(new_error);
+                }
+            }
+            _ => {}
+        }
+        state.errors.push(error); 
+        Line::Error(l.line, r.line)
+    },
 }
 
 // TODO: 
@@ -39,11 +62,11 @@ MacroDefine: Line<'input> = {
 }
 
 MacroDefinition: MacroDefinition<'input> = {
-    <name:VariableString+> " "+ <value:Value+> => {
-        MacroDefinition::new(name.into(), value.into())
+    <name:VariableStrings> " "+ <value:Value+> => {
+        MacroDefinition::new(name, value.into())
     },
-    <name:VariableString+> " "* => {
-        MacroDefinition::new(name.into(), Vec::new().into())
+    <name:VariableStrings> " "* => {
+        MacroDefinition::new(name, Vec::new().into())
     }
 }
 
@@ -69,7 +92,7 @@ MacroInclude: Line<'input> = {
 }
 
 UnknownMacro: Line<'input> = {
-     <l:@L> <m:"#unknown"> => {
+     <l:@L> <m:"#unknown"> <r:@R> => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     error: PlugParseError::new_unknown_macro(l, m)
@@ -77,7 +100,7 @@ UnknownMacro: Line<'input> = {
                 dropped_tokens: vec![]
             };
         state.errors.push(e);
-        Line::Error
+        Line::Error(l.line, r.line)
     }
 }
 
@@ -111,12 +134,16 @@ VariableString: tree::VariableString<'input> = {
     Variable => tree::VariableString::Variable(<>),
 }
 
+VariableStrings: tree::VariableStrings<'input> = {
+    <variables: VariableString+> => variables.into()
+}
+
 Quote: tree::Quote<'input> = {
     <l:@L> QuoteBegin <content: VariableString*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
 }
 
 IncludePath: tree::IncludePath<'input> = {
-     <l:@L> <content: VariableString+> <r:@R> => tree::IncludePath::VariableStrings(content.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
+     <l:@L> <content: VariableStrings> <r:@R> => tree::IncludePath::VariableStrings(content, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
     Quote => tree::IncludePath::Quote(<>),
 }
 
@@ -125,7 +152,7 @@ IfDef: Line<'input> = {
         Line::Macro{
             macro_type: MacroType::IfDef{
                 condition,
-                branch: branch,
+                branch,
                 body,
                 range: TokenRange::new_line(ml,mr).unwrap(),
                 }, 
@@ -172,6 +199,46 @@ MacroCondition: tree::MacroCondition<'input> = {
             lhs,
             rhs: Box::new(rhs),
         },
+}
+
+// TODO: Need to change IfNotDef to use clauses not conditions
+
+IfNotDef: Line<'input> = {
+    <ml:@L> "#ifndef" <mr:@R> <clauses:IfNotDefClauses> " "* "EOL" <body:Lines> <branch: IfNotDefBranch> => 
+        Line::Macro{
+            macro_type: MacroType::IfNotDef{
+                clauses,
+                branch,
+                body,
+                range: TokenRange::new_line(ml,mr).unwrap(),
+                }, 
+            comment: None, 
+            line: ml.line,
+        },
+}
+
+IfNotDefBranch: tree::IfNotDefBranch<'input> = {
+    <ml:@L> "#else" <mr:@R>  "EOL" <body:Lines> <endl:@L> "#endif" <endr:@R> => 
+        tree::IfNotDefBranch::Else {
+            line: ml.line,
+            macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            body,
+            endif_line: endl.line,
+            endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
+        },
+    <ml:@L> "#endif" <mr:@R> "EOL" => 
+        tree::IfNotDefBranch::EndIf {
+            line: ml.line,
+            macro_range: TokenRange::new_line(ml,mr).unwrap(),
+        },
+}
+
+IfNotDefClauses: tree::IfNotDefClauses<'input> = {
+    <clause: VariableStrings> => clause.into(),
+    <mut clauses: IfNotDefClauses> " "+ <clause: VariableStrings> => {
+        clauses.push(clause.into()); 
+        clauses
+    },
 }
 
 

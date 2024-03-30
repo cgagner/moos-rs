@@ -7,8 +7,8 @@ use moos_parser::{
         error::{PlugParseError, PlugParseErrorKind},
         lexer::{State, Token},
         tree::{
-            IfDefBranch, IncludePath, Line, Lines, MacroCondition, MacroDefinition, MacroType,
-            Quote, Values, Variable, VariableStrings,
+            IfDefBranch, IfNotDefBranch, IncludePath, Line, Lines, MacroCondition, MacroDefinition,
+            MacroType, Quote, Values, Variable, VariableStrings,
         },
     },
     ParseError, PlugParser,
@@ -59,7 +59,7 @@ pub fn parse(document: &mut Document) {
     }
 
     let iter = document.diagnostics.iter();
-    iter.for_each(|e| {
+    state.errors.iter().for_each(|e| {
         error!("Parse Error: {e:?}");
     });
     // TODO: Add new method to handle converting errors into diagnostics
@@ -98,6 +98,14 @@ pub fn parse(document: &mut Document) {
                         &error.loc_start,
                         &error.loc_end,
                         format!("Unknown macro: {text}"),
+                    );
+                    document.diagnostics.push(d);
+                }
+                PlugParseErrorKind::MissingEndIf => {
+                    let d = new_error_diagnostic(
+                        &error.loc_start,
+                        &error.loc_end,
+                        format!("Missing #endif"),
                     );
                     document.diagnostics.push(d);
                 }
@@ -167,21 +175,24 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                         handle_lines(document, body);
                         handle_ifdef_branch(document, line, branch);
                     }
-                    MacroType::IfNotDef { range } => {
-                        //
+                    MacroType::IfNotDef {
+                        clauses,
+                        branch,
+                        body,
+                        range,
+                    } => {
                         handle_macro_token(document, line, &range);
-                    }
-                    MacroType::ElseIfDef { range } => {
-                        //
-                        handle_macro_token(document, line, &range);
-                    }
-                    MacroType::Else { range } => {
-                        //
-                        handle_macro_token(document, line, &range);
-                    }
-                    MacroType::EndIf { range } => {
-                        //
-                        handle_macro_token(document, line, &range);
+                        for clause in clauses {
+                            handle_variable_strings(
+                                document,
+                                line,
+                                clause,
+                                TokenTypes::Variable,
+                                0,
+                            );
+                        }
+                        handle_lines(document, body);
+                        handle_ifndef_branch(document, line, branch);
                     }
                 }
             }
@@ -200,7 +211,7 @@ fn handle_macro_token(document: &mut Document, line: u32, range: &TokenRange) {
         line,
         range.clone(),
         SemanticTokenInfo {
-            token_type: TokenTypes::Macro as u32,
+            token_type: TokenTypes::Keyword as u32,
             token_modifiers: 0,
         },
     );
@@ -306,7 +317,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     line,
                     range.clone(),
                     SemanticTokenInfo {
-                        token_type: TokenTypes::Keyword as u32,
+                        token_type: TokenTypes::Macro as u32, // TODO: Should this be a type?
                         token_modifiers: 0,
                     },
                 );
@@ -400,6 +411,26 @@ fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch:
             handle_macro_token(document, *endif_line, &endif_macro_range);
         }
         IfDefBranch::EndIf { line, macro_range } => {
+            handle_macro_token(document, *line, &macro_range);
+        }
+    }
+}
+
+fn handle_ifndef_branch(document: &mut Document, _parent_line: u32, input_branch: &IfNotDefBranch) {
+    // TODO: Add folding ranges
+    match input_branch {
+        IfNotDefBranch::Else {
+            line,
+            macro_range,
+            body,
+            endif_line,
+            endif_macro_range,
+        } => {
+            handle_macro_token(document, *line, &macro_range);
+            handle_lines(document, body);
+            handle_macro_token(document, *endif_line, &endif_macro_range);
+        }
+        IfNotDefBranch::EndIf { line, macro_range } => {
             handle_macro_token(document, *line, &macro_range);
         }
     }

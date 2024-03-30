@@ -265,7 +265,7 @@ impl<'input> Lexer<'input> {
     }
 
     fn tokenize_or_operator(&mut self, i: usize) {
-        self.iter.next();
+        let mut tokens = self.iter.next();
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
@@ -274,10 +274,19 @@ impl<'input> Lexer<'input> {
         }
 
         self.push_token(i, Token::OrOperator, i + 2);
+
+        // Consume tokens until the next token is a non-white space or we reach
+        // the end of the file
+        while let Some(((_current_i, _current_c), (_next_i, next_c))) = tokens {
+            match next_c {
+                ' ' | '\t' => tokens = self.iter.next(),
+                _ => break,
+            }
+        }
     }
 
     fn tokenize_and_operator(&mut self, i: usize) {
-        self.iter.next();
+        let mut tokens = self.iter.next();
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
@@ -286,6 +295,15 @@ impl<'input> Lexer<'input> {
         }
 
         self.push_token(i, Token::AndOperator, i + 2);
+
+        // Consume tokens until the next token is a non-white space or we reach
+        // the end of the file
+        while let Some(((_current_i, _current_c), (_next_i, next_c))) = tokens {
+            match next_c {
+                ' ' | '\t' => tokens = self.iter.next(),
+                _ => break,
+            }
+        }
     }
 
     fn get_macro_token(line: &'input str) -> Token<'input> {
@@ -354,13 +372,28 @@ impl<'input> Lexer<'input> {
             return;
         };
 
+        let mut is_ifndef = false;
+
         let has_conditions = match token {
             Token::MacroIfDef | Token::MacroElseIfDef => true,
+            // #ifndef doesn't really support conditions, but we will handle
+            // that in the parser. For now, enable the tokenization of the
+            // && and || operators so we can throw an in the parser.
+            Token::MacroIfNotDef => {
+                is_ifndef = true;
+                true
+            }
+            _ => false,
+        };
+
+        let has_comments = match token {
+            Token::MacroElse | Token::MacroEndIf => true,
             _ => false,
         };
 
         let mut has_whitespace = match token {
             Token::MacroDefine | Token::MacroIfDef | Token::MacroElseIfDef => true,
+            Token::MacroIfNotDef => true,
             _ => false,
         };
 
@@ -369,7 +402,7 @@ impl<'input> Lexer<'input> {
                 || c == '"'
                 || (c == '=')
                 || (has_whitespace && (c == ' ' || c == '\t')) // Whitespace
-                || (c == '/' && cc == '/') // Comment
+                || (has_comments && (c == '/' && cc == '/')) // Comment
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (has_conditions && c == '|' && cc == '|') // Or operator
@@ -431,12 +464,16 @@ impl<'input> Lexer<'input> {
                     self.found_assign_op = false;
                 }
                 ' ' | '\t' => {
-                    self.found_assign_op = true; // Enables parsing primitives
+                    if !is_ifndef {
+                        self.found_assign_op = true; // Enables parsing primitives
+                    }
                     self.trim_end = true;
                     if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
                         if !unhandled.is_empty() {
                             self.scan_value(unhandled, prev_i);
-                            has_whitespace = false;
+                            if !is_ifndef {
+                                has_whitespace = false;
+                            }
                             self.push_token(i, Token::Space, i + 1);
                         }
                         self.previous_index = self.get_safe_index(i + 1);

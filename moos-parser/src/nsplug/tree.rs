@@ -198,19 +198,10 @@ pub enum MacroType<'input> {
         range: TokenRange,
     },
     IfNotDef {
+        clauses: IfNotDefClauses<'input>,
+        branch: IfNotDefBranch<'input>,
+        body: Lines<'input>,
         /// Range of the "#ifndef"
-        range: TokenRange,
-    },
-    ElseIfDef {
-        /// Range of the "#elseifdef"
-        range: TokenRange,
-    },
-    Else {
-        /// Range of the "#else"
-        range: TokenRange,
-    },
-    EndIf {
-        /// Range of the "#endif"
         range: TokenRange,
     },
 }
@@ -233,7 +224,17 @@ impl<'input> ToString for MacroType<'input> {
                 // TODO: Need to recursively print the branch and lines
                 format!("#ifdef {}", condition.to_string())
             }
-            _ => "".to_string(),
+            MacroType::IfNotDef {
+                clauses,
+                branch,
+                body,
+                range,
+            } => {
+                let mut rtn = "#ifndef ".to_string();
+                clauses
+                    .iter()
+                    .fold(rtn, |acc, v| acc + " " + v.to_string().as_str())
+            }
         }
     }
 }
@@ -339,6 +340,38 @@ impl<'input> ToString for IfDefBranch<'input> {
     }
 }
 
+vec_wrapper!(IfNotDefClauses, VariableStrings);
+
+#[derive(Debug)]
+pub enum IfNotDefBranch<'input> {
+    Else {
+        line: u32,
+        macro_range: TokenRange,
+        body: Lines<'input>,
+        endif_line: u32,
+        endif_macro_range: TokenRange,
+    },
+    EndIf {
+        line: u32,
+        macro_range: TokenRange,
+    },
+}
+
+impl<'input> ToString for IfNotDefBranch<'input> {
+    fn to_string(&self) -> String {
+        match self {
+            IfNotDefBranch::Else {
+                line,
+                macro_range,
+                body,
+                endif_line,
+                endif_macro_range,
+            } => "#else".to_string(),
+            IfNotDefBranch::EndIf { line, macro_range } => "#endif".to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Line<'input> {
     /// NOTE: Comments are not really supported by NSPlug. We have them here
@@ -356,7 +389,7 @@ pub enum Line<'input> {
         variable: Variable<'input>,
         line: u32,
     },
-    Error,
+    Error(u32, u32),
     EndOfLine,
 }
 
@@ -377,8 +410,8 @@ impl<'input> ToString for Line<'input> {
                     macro_type.to_string()
                 }
             }
-            Line::Variable { variable, line } => todo!(),
-            Line::Error => "".to_string(),
+            Line::Variable { variable, line } => variable.to_string(),
+            Line::Error(_, _) => "".to_string(),
             Line::EndOfLine => "".to_string(),
         }
     }

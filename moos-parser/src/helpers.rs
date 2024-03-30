@@ -120,6 +120,13 @@ macro_rules! vec_wrapper {
             }
         }
 
+        impl<'lt> From<$type<'lt>> for $name<'lt> {
+            fn from(value: $type<'lt>) -> Self {
+                let values: Vec<$type<'lt>> = vec![value];
+                Self(values.into())
+            }
+        }
+
         impl<'lt> ToString for $name<'lt> {
             fn to_string(&self) -> String {
                 let rtn = "".to_owned();
