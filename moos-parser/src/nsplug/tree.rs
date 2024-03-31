@@ -178,6 +178,25 @@ impl<'input> From<Quote<'input>> for IncludePath<'input> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct IncludeTag<'input> {
+    pub tag: &'input str,
+    /// Range of the Include tag. THis includes the start and ending brackets
+    pub range: TokenRange,
+}
+
+impl<'input> IncludeTag<'input> {
+    pub fn new(tag: &'input str, range: TokenRange) -> Self {
+        Self { tag, range }
+    }
+}
+
+impl<'input> ToString for IncludeTag<'input> {
+    fn to_string(&self) -> String {
+        format!("<{}>", self.tag)
+    }
+}
+
 #[derive(Debug)]
 pub enum MacroType<'input> {
     Define {
@@ -187,6 +206,8 @@ pub enum MacroType<'input> {
     },
     Include {
         path: IncludePath<'input>,
+        /// Optional include tag. Added in 2020.
+        tag: Option<IncludeTag<'input>>,
         /// Range of the "#include"
         range: TokenRange,
     },
@@ -212,8 +233,12 @@ impl<'input> ToString for MacroType<'input> {
             MacroType::Define { definition, range } => {
                 format!("#define {}", definition.to_string())
             }
-            MacroType::Include { path, range } => {
-                format!("#include {}", path.to_string())
+            MacroType::Include { path, tag, range } => {
+                if let Some(tag) = tag {
+                    format!("#include {} {}", path.to_string(), tag.to_string())
+                } else {
+                    format!("#include {}", path.to_string())
+                }
             }
             MacroType::IfDef {
                 condition,

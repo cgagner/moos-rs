@@ -138,6 +138,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         semantic_tokens_provider: Some(
             SemanticTokensOptions {
                 legend: SemanticTokensLegend {
+                    /// TODO: These should get moved to where we define the
+                    /// SemanticToken enum
                     token_types: vec![
                         SemanticTokenType::COMMENT,
                         SemanticTokenType::KEYWORD,
@@ -146,6 +148,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                         SemanticTokenType::NUMBER,
                         SemanticTokenType::MACRO,
                         SemanticTokenType::OPERATOR,
+                        SemanticTokenType::TYPE,
+                        SemanticTokenType::NAMESPACE,
                     ],
                     token_modifiers: vec![
                         SemanticTokenModifier::DECLARATION,

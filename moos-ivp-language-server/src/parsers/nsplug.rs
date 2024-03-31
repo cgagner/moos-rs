@@ -7,8 +7,8 @@ use moos_parser::{
         error::{PlugParseError, PlugParseErrorKind},
         lexer::{State, Token},
         tree::{
-            IfDefBranch, IfNotDefBranch, IncludePath, Line, Lines, MacroCondition, MacroDefinition,
-            MacroType, Quote, Values, Variable, VariableStrings,
+            IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines, MacroCondition,
+            MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings,
         },
     },
     ParseError, PlugParser,
@@ -159,8 +159,8 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                         );
                         handle_values(document, line, &definition.value);
                     }
-                    MacroType::Include { path, range } => {
-                        handle_include(document, line, &path, &range);
+                    MacroType::Include { path, tag, range } => {
+                        handle_include(document, line, &path, &tag, &range);
                     }
 
                     MacroType::IfDef {
@@ -217,7 +217,13 @@ fn handle_macro_token(document: &mut Document, line: u32, range: &TokenRange) {
     );
 }
 
-fn handle_include(document: &mut Document, line: u32, path: &IncludePath, range: &TokenRange) {
+fn handle_include(
+    document: &mut Document,
+    line: u32,
+    path: &IncludePath,
+    tag: &Option<IncludeTag>,
+    range: &TokenRange,
+) {
     document.semantic_tokens.insert(
         line,
         range.clone(),
@@ -231,6 +237,17 @@ fn handle_include(document: &mut Document, line: u32, path: &IncludePath, range:
             handle_variable_strings(document, line, &values, TokenTypes::String, 0);
         }
         IncludePath::Quote(quote) => handle_quote(document, line, &quote),
+    }
+
+    if let Some(tag) = tag {
+        document.semantic_tokens.insert(
+            line,
+            tag.range.clone(),
+            SemanticTokenInfo {
+                token_type: TokenTypes::Namespace as u32,
+                token_modifiers: 0,
+            },
+        );
     }
 }
 

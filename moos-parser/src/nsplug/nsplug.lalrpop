@@ -46,12 +46,6 @@ pub Line: Line<'input> = {
     },
 }
 
-// TODO: 
-//   1. Add MacroIfDef
-//   2. Add MacroElseIfDef
-//   3. Add MacroIfNotDef
-
-
 MacroDefine: Line<'input> = {
     <ml:@L> <d:"#define"> <mr:@R> <definition:MacroDefinition> <comment:"Comment"?> "EOL" => 
         Line::Macro{
@@ -71,7 +65,7 @@ MacroDefinition: MacroDefinition<'input> = {
 }
 
 MacroInclude: Line<'input> = {
-    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <l:@L> <comment:"Comment"?> <r:@R> "EOL" => {
+    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <tag: IncludeTag?> <l:@L> <comment:"Comment"?> <r:@R> "EOL" => {
         if let Some(comment) = comment {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -82,7 +76,7 @@ MacroInclude: Line<'input> = {
             state.errors.push(e);
         }
         Line::Macro{
-            macro_type: MacroType::Include{path, range: TokenRange::new_line(ml,mr).unwrap()}, 
+            macro_type: MacroType::Include{path, tag, range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment,
             line: ml.line,
         }
@@ -147,6 +141,10 @@ IncludePath: tree::IncludePath<'input> = {
     Quote => tree::IncludePath::Quote(<>),
 }
 
+IncludeTag: tree::IncludeTag<'input> = {
+    <l:@L> "<" <tag: "ValueString"> ">" <r:@R> => tree::IncludeTag{tag, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludeTag`")},
+}
+
 IfDef: Line<'input> = {
     <ml:@L> "#ifdef" <mr:@R> <condition:MacroCondition> "EOL" <body:Lines> <branch: IfDefBranch> => 
         Line::Macro{
@@ -200,8 +198,6 @@ MacroCondition: tree::MacroCondition<'input> = {
             rhs: Box::new(rhs),
         },
 }
-
-// TODO: Need to change IfNotDef to use clauses not conditions
 
 IfNotDef: Line<'input> = {
     <ml:@L> "#ifndef" <mr:@R> <clauses:IfNotDefClauses> " "* "EOL" <body:Lines> <branch: IfNotDefBranch> => 
@@ -273,6 +269,8 @@ extern {
         "#unknown" => Token::UnknownMacro(<&'input str>),
         "||" => Token::OrOperator,
         "&&" => Token::AndOperator,
+        "<" => Token::LeftAngleBracket,
+        ">" => Token::RightAngleBracket,
         " " => Token::Space,
     }
 }

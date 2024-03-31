@@ -54,6 +54,8 @@ pub enum Token<'input> {
     UnknownMacro(&'input str),
     OrOperator,
     AndOperator,
+    LeftAngleBracket,
+    RightAngleBracket,
     Space,
     /// End of Line
     EOL,
@@ -372,17 +374,18 @@ impl<'input> Lexer<'input> {
             return;
         };
 
-        let mut is_ifndef = false;
+        let (is_ifndef, is_include) = match token {
+            Token::MacroInclude => (false, true),
+            Token::MacroIfNotDef => (true, false),
+            _ => (false, false),
+        };
 
         let has_conditions = match token {
             Token::MacroIfDef | Token::MacroElseIfDef => true,
             // #ifndef doesn't really support conditions, but we will handle
             // that in the parser. For now, enable the tokenization of the
             // && and || operators so we can throw an in the parser.
-            Token::MacroIfNotDef => {
-                is_ifndef = true;
-                true
-            }
+            Token::MacroIfNotDef => true,
             _ => false,
         };
 
@@ -400,15 +403,23 @@ impl<'input> Lexer<'input> {
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
                 || c == '"'
-                || (c == '=')
                 || (has_whitespace && (c == ' ' || c == '\t')) // Whitespace
                 || (has_comments && (c == '/' && cc == '/')) // Comment
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (has_conditions && c == '|' && cc == '|') // Or operator
                 || (has_conditions && c == '&' && cc == '&' ) // And operator
+                || (is_include && (c == ' ' || c == '\t') && cc == '<') // Handle include tags
         }) {
             match c {
+                c if is_include && (c == ' ' || c == '\t') && cc == '<' => {
+                    // Handle include - This needs to happen before handling
+                    // the spaces below.
+                    let found_include_tag = self.tokenize_include_tag(i);
+                    if found_include_tag {
+                        return;
+                    }
+                }
                 '\n' => {
                     self.tokenize_new_line(i, false);
                     return;
@@ -463,7 +474,7 @@ impl<'input> Lexer<'input> {
                     self.trim_start = true;
                     self.found_assign_op = false;
                 }
-                ' ' | '\t' => {
+                c if has_whitespace && (c == ' ' || c == '\t') => {
                     if !is_ifndef {
                         self.found_assign_op = true; // Enables parsing primitives
                     }
@@ -494,6 +505,102 @@ impl<'input> Lexer<'input> {
                 self.scan_value(unhandled, prev_i);
             }
             self.previous_index = self.get_safe_index(self.input.len());
+        }
+    }
+
+    fn tokenize_include_tag(&mut self, index: usize) -> bool {
+        // The include tag is a space followed by a '<', then a tag, then
+        // a '>' and the end of the line. If it does not follow that format,
+        // the characters should be treated as part of the include path.
+
+        // NOTE: We do NOT handle nested tags (E.G. <<my_tag>>) because
+        // nsplug doesn't care. It finds the first '<' then the last '>'.
+
+        // Make a clone of the iterator so we can look forward to the end of
+        // the line to see if this is a valid tag
+        let mut local_iter = self.iter.clone();
+
+        let mut right_bracket_location: Option<usize> = None;
+        let mut new_line_index: Option<usize> = None;
+
+        // Search until we find the end of the line. Mark the location of the
+        // last '>'.
+        while let Some(((i, c), (_ii, _cc))) = local_iter.find(|&((_i, c), (_ii, _cc))| {
+            c == '\n' // New line
+            || c == '>' // Right angle bracket
+        }) {
+            match c {
+                '>' => right_bracket_location = Some(i),
+                '\n' => {
+                    new_line_index = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(right_bracket_location) = right_bracket_location {
+            let remaining = if let Some(i) = new_line_index {
+                // Up to, but not including the new line
+                &self.input[index + 1..i]
+            } else {
+                // Until the end of the file
+                &self.input[index + 1..]
+            }
+            .trim();
+
+            // Check that the right bracket is the last character in the trimmed
+            // string.
+            if remaining.len() < 2 && !remaining.ends_with(">") {
+                return false;
+            }
+
+            // Check that there isn't any whitespace in the remaining
+            if let Some(_i) = remaining.find(char::is_whitespace) {
+                return false;
+            }
+
+            // We have found a tag.
+            // Push unhandled before the tag
+            self.trim_end = true;
+            if let Some((prev_i, unhandled)) = self.get_unhandled_string(index, true) {
+                if !unhandled.is_empty() {
+                    self.scan_value(unhandled, prev_i);
+                    self.start_of_line = false;
+                    self.trim_start = false;
+                }
+            }
+
+            // Push the left angle bracket
+            self.push_token(index + 1, Token::LeftAngleBracket, index + 2);
+
+            // Push the tag as a value string
+            self.push_token(
+                index + 2,
+                Token::ValueString(&remaining[1..remaining.len() - 1]),
+                right_bracket_location,
+            );
+
+            // Push the right angle bracket
+            self.push_token(
+                right_bracket_location,
+                Token::RightAngleBracket,
+                right_bracket_location + 1,
+            );
+
+            // If we found a new line, EOL
+            if let Some(i) = new_line_index {
+                self._handle_new_line(i);
+            } else {
+                self.previous_index = None;
+            }
+
+            // Update our iterator to our local copy
+            self.iter = local_iter;
+
+            return true;
+        } else {
+            return false;
         }
     }
 
