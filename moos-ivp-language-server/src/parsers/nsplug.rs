@@ -1,5 +1,5 @@
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
-use lsp_types::{Diagnostic, DiagnosticSeverity};
+use lsp_types::{Diagnostic, DiagnosticSeverity, FoldingRange};
 use moos_parser::{
     lexers::{self, Location, TokenMap, TokenRange},
     nsplug::{
@@ -169,7 +169,12 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                         body,
                         range,
                     } => {
-                        //
+                        let mut folding_range = FoldingRange::default();
+                        folding_range.start_line = line;
+                        folding_range.end_line = branch.get_start_line() - 1;
+                        folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+                        document.add_folding_range(folding_range);
+
                         handle_macro_token(document, line, &range);
                         handle_macro_condition(document, line, &condition);
                         handle_lines(document, body);
@@ -181,6 +186,12 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                         body,
                         range,
                     } => {
+                        let mut folding_range = FoldingRange::default();
+                        folding_range.start_line = line;
+                        folding_range.end_line = branch.get_start_line() - 1;
+                        folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+                        document.add_folding_range(folding_range);
+
                         handle_macro_token(document, line, &range);
                         for clause in clauses {
                             handle_variable_strings(
@@ -334,7 +345,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     line,
                     range.clone(),
                     SemanticTokenInfo {
-                        token_type: TokenTypes::Macro as u32, // TODO: Should this be a type?
+                        token_type: TokenTypes::Type as u32,
                         token_modifiers: 0,
                     },
                 );
@@ -402,7 +413,13 @@ fn handle_macro_condition(document: &mut Document, line: u32, condition: &MacroC
 }
 
 fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch: &IfDefBranch) {
-    // TODO: Add folding ranges
+    let mut folding_range = FoldingRange::default();
+    folding_range.start_line = input_branch.get_start_line();
+    folding_range.end_line = input_branch.get_end_line();
+    folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+    // Adding to the document will check if the folding range is valid.
+    document.add_folding_range(folding_range);
+
     match input_branch {
         IfDefBranch::ElseIfDef {
             line,
@@ -434,7 +451,13 @@ fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch:
 }
 
 fn handle_ifndef_branch(document: &mut Document, _parent_line: u32, input_branch: &IfNotDefBranch) {
-    // TODO: Add folding ranges
+    let mut folding_range = FoldingRange::default();
+    folding_range.start_line = input_branch.get_start_line();
+    folding_range.end_line = input_branch.get_end_line();
+    folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+    // Adding to the document will check if the folding range is valid.
+    document.add_folding_range(folding_range);
+
     match input_branch {
         IfNotDefBranch::Else {
             line,

@@ -1,5 +1,7 @@
 use crate::parsers::nsplug;
-use lsp_types::{Diagnostic, SemanticToken, SemanticTokenModifier, SemanticTokens, Url};
+use lsp_types::{
+    Diagnostic, FoldingRange, SemanticToken, SemanticTokenModifier, SemanticTokens, Url,
+};
 use moos_parser::lexers::TokenMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -175,6 +177,7 @@ pub struct Document {
     pub file_type: FileType,
     pub semantic_tokens: TokenMap<SemanticTokenInfo>,
     pub diagnostics: Vec<Diagnostic>,
+    pub folding_ranges: Vec<FoldingRange>,
 }
 
 impl Document {
@@ -185,12 +188,19 @@ impl Document {
             file_type: FileType::Other,
             semantic_tokens: TokenMap::new(),
             diagnostics: Vec::new(),
+            folding_ranges: Vec::new(),
         }
     }
 
     pub fn refresh(&mut self) {
         self.clear();
         nsplug::parse(self);
+    }
+
+    pub fn clear(&mut self) {
+        self.semantic_tokens.clear();
+        self.diagnostics.clear();
+        self.folding_ranges.clear();
     }
 
     pub fn get_semantic_tokens(&self) -> SemanticTokens {
@@ -209,9 +219,42 @@ impl Document {
         return tokens;
     }
 
-    pub fn clear(&mut self) {
-        self.semantic_tokens.clear();
-        self.diagnostics.clear();
+    pub fn add_folding_range(&mut self, folding_range: FoldingRange) -> bool {
+        // Folding range end must be after the start range.
+        if folding_range.end_line <= folding_range.start_line {
+            return false;
+        }
+
+        // Do not add folding ranges that are less than two lines.
+        if folding_range.end_line - folding_range.start_line < 2 {
+            return false;
+        }
+
+        // Checks if r1 is inside of r2 - Assumes a check for entirely before
+        // and entirely after has already been completed.
+        let is_inside = |r1: &FoldingRange, r2: &FoldingRange| -> bool {
+            r1.start_line > r2.start_line
+                && r1.start_line < r2.end_line
+                && r1.end_line < r2.end_line
+        };
+
+        // Check for overlaps.. It is fine if a folding range is entirely
+        // inside of another range.
+        for existing_range in &self.folding_ranges {
+            if folding_range.end_line < existing_range.start_line
+                || folding_range.start_line > existing_range.end_line
+                || is_inside(&folding_range, &existing_range)
+                || is_inside(&existing_range, &folding_range)
+            {
+                continue;
+            } else {
+                return false;
+            }
+        }
+
+        // If we get this far, then it is a valid range
+        self.folding_ranges.push(folding_range);
+        return true;
     }
 }
 

@@ -55,12 +55,11 @@ use std::error::Error;
 
 use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
-    notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
-    request::{Completion, GotoDefinition},
-    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, GotoDefinitionResponse,
-    InitializeParams, OneOf, SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities,
+    FoldingRangeProviderCapability, GotoDefinitionResponse, InitializeParams, OneOf,
+    SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
 use tracing::trace as mlog;
@@ -68,24 +67,7 @@ use tracing::{
     debug, debug_span, error, error_span, info, info_span, trace, trace_span, warn, warn_span,
 };
 
-use lsp_server_derive_macro::{notification_handler, request_handler};
-
 use crate::handler::Handler;
-
-// Declare the Requests that we are going to handle.
-#[request_handler]
-enum MyRequests {
-    GotoDefinition,
-    Completion,
-}
-
-// Declare the Notifications we are going to handle.
-#[notification_handler]
-enum MyNotifications {
-    DidChangeTextDocument,
-    DidOpenTextDocument,
-    DidChangeConfiguration,
-}
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     tracer::Tracer::init()?;
@@ -138,8 +120,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         semantic_tokens_provider: Some(
             SemanticTokensOptions {
                 legend: SemanticTokensLegend {
-                    /// TODO: These should get moved to where we define the
-                    /// SemanticToken enum
+                    // TODO: These should get moved to where we define the
+                    // SemanticToken enum
                     token_types: vec![
                         SemanticTokenType::COMMENT,
                         SemanticTokenType::KEYWORD,
@@ -167,6 +149,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             workspace_diagnostics: true,
             ..Default::default()
         })),
+        folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
         ..Default::default()
     };
 

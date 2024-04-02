@@ -5,10 +5,10 @@ use lsp_types::{
     notification::{
         DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
     },
-    request::{Completion, GotoDefinition, SemanticTokensFullRequest},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionResponse,
-    InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams,
-    SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
+    request::{Completion, FoldingRangeRequest, GotoDefinition, SemanticTokensFullRequest},
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, FoldingRange, FoldingRangeParams,
+    GotoDefinitionResponse, InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens,
+    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
     TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
@@ -23,8 +23,9 @@ use lsp_server_derive_macro::{notification_handler, request_handler};
 // Declare the Requests that we are going to handle.
 #[request_handler]
 enum MyRequests {
-    GotoDefinition,
     Completion,
+    FoldingRangeRequest,
+    GotoDefinition,
     SemanticTokensFullRequest,
 }
 
@@ -112,6 +113,17 @@ impl Handler {
             Completion(id, params) => {
                 mlog!("Got completion request #{id}: {params:?}");
             }
+
+            FoldingRangeRequest(id, params) => {
+                let result = self.handle_folding_range_request(&id, params);
+                let result = serde_json::to_value(&result).unwrap();
+                let response = Response {
+                    id,
+                    result: Some(result),
+                    error: None,
+                };
+                return Some(response);
+            }
             Unhandled(req) => info!("Unhandled Request {:?}", req.method),
             Error { method, error } => {
                 error!("Failed to handle Request {method}: {error:?}")
@@ -140,6 +152,24 @@ impl Handler {
         };
 
         return result;
+    }
+
+    fn handle_folding_range_request(
+        &mut self,
+        id: &RequestId,
+        params: FoldingRangeParams,
+    ) -> Option<Vec<FoldingRange>> {
+        let uri = params.text_document.uri;
+
+        if let Some(doc) = self.cache.documents.get(&uri) {
+            if !doc.folding_ranges.is_empty() {
+                return Some(doc.folding_ranges.clone());
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
     }
 
     //-----------------------------------------------------------------------------

@@ -341,26 +341,80 @@ pub enum IfDefBranch<'input> {
     },
 }
 
+impl<'input> IfDefBranch<'input> {
+    /// Get start line of the branch.
+    pub fn get_start_line(&self) -> u32 {
+        match self {
+            IfDefBranch::ElseIfDef {
+                line,
+                macro_range: _,
+                condition: _,
+                body: _,
+                branch: _,
+            } => *line,
+            IfDefBranch::Else {
+                line,
+                macro_range: _,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => *line,
+            IfDefBranch::EndIf {
+                line,
+                macro_range: _,
+            } => *line,
+        }
+    }
+
+    /// Get end line of this branch.
+    pub fn get_end_line(&self) -> u32 {
+        match self {
+            IfDefBranch::ElseIfDef {
+                line: _,
+                macro_range: _,
+                condition: _,
+                body: _,
+                branch,
+            } => branch.get_start_line() - 1,
+            IfDefBranch::Else {
+                line: _,
+                macro_range: _,
+                body: _,
+                endif_line,
+                endif_macro_range: _,
+            } => *endif_line - 1,
+            // For Endif, the start line and the end line are always the same.
+            IfDefBranch::EndIf {
+                line,
+                macro_range: _,
+            } => *line,
+        }
+    }
+}
+
 impl<'input> ToString for IfDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
             IfDefBranch::ElseIfDef {
-                line,
-                macro_range,
+                line: _,
+                macro_range: _,
                 condition,
-                body,
-                branch,
+                body: _,
+                branch: _,
             } => {
                 format!("#elsifdef {}", condition.to_string())
             }
             IfDefBranch::Else {
-                line,
-                macro_range,
-                body,
-                endif_line,
-                endif_macro_range,
+                line: _,
+                macro_range: _,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
             } => "#else".to_string(),
-            IfDefBranch::EndIf { line, macro_range } => "#endif".to_string(),
+            IfDefBranch::EndIf {
+                line: _,
+                macro_range: _,
+            } => "#endif".to_string(),
         }
     }
 }
@@ -382,17 +436,57 @@ pub enum IfNotDefBranch<'input> {
     },
 }
 
+impl<'input> IfNotDefBranch<'input> {
+    /// Get the start line of this branch
+    pub fn get_start_line(&self) -> u32 {
+        match self {
+            IfNotDefBranch::Else {
+                line,
+                macro_range: _,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => *line,
+            IfNotDefBranch::EndIf {
+                line,
+                macro_range: _,
+            } => *line,
+        }
+    }
+
+    /// Get the end line of this branch.
+    pub fn get_end_line(&self) -> u32 {
+        match self {
+            IfNotDefBranch::Else {
+                line: _,
+                macro_range: _,
+                body: _,
+                endif_line,
+                endif_macro_range: _,
+            } => *endif_line - 1,
+            // For EndIf, the start and end lines are always the same.
+            IfNotDefBranch::EndIf {
+                line,
+                macro_range: _,
+            } => *line,
+        }
+    }
+}
+
 impl<'input> ToString for IfNotDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
             IfNotDefBranch::Else {
-                line,
-                macro_range,
-                body,
-                endif_line,
-                endif_macro_range,
+                line: _,
+                macro_range: _,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
             } => "#else".to_string(),
-            IfNotDefBranch::EndIf { line, macro_range } => "#endif".to_string(),
+            IfNotDefBranch::EndIf {
+                line: _,
+                macro_range: _,
+            } => "#endif".to_string(),
         }
     }
 }
