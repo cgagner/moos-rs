@@ -1,5 +1,8 @@
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
-use lsp_types::{Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, Position};
+use lsp_types::{
+    Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, InlayHint, InlayHintKind,
+    InlayHintLabel, Position,
+};
 use moos_parser::{
     lexers::{self, Location, TokenMap, TokenRange},
     nsplug::{
@@ -178,7 +181,9 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                         handle_macro_token(document, line, &range);
                         handle_macro_condition(document, line, &condition);
                         handle_lines(document, body);
-                        handle_ifdef_branch(document, line, branch);
+
+                        let parent_text = format!(" {}", macro_type.to_string());
+                        handle_ifdef_branch(document, line, branch, parent_text.as_str());
                     }
                     MacroType::IfNotDef {
                         clauses,
@@ -203,7 +208,9 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                             );
                         }
                         handle_lines(document, body);
-                        handle_ifndef_branch(document, line, branch);
+
+                        let parent_text = format!(" {}", macro_type.to_string());
+                        handle_ifndef_branch(document, line, branch, parent_text.as_str());
                     }
                 }
             }
@@ -447,7 +454,12 @@ fn handle_macro_condition(document: &mut Document, line: u32, condition: &MacroC
     }
 }
 
-fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch: &IfDefBranch) {
+fn handle_ifdef_branch(
+    document: &mut Document,
+    _parent_line: u32,
+    input_branch: &IfDefBranch,
+    parent_text: &str,
+) {
     let mut folding_range = FoldingRange::default();
     folding_range.start_line = input_branch.get_start_line();
     folding_range.end_line = input_branch.get_end_line();
@@ -466,7 +478,7 @@ fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch:
             handle_macro_token(document, *line, &macro_range);
             handle_macro_condition(document, *line, &condition);
             handle_lines(document, body);
-            handle_ifdef_branch(document, *line, branch);
+            handle_ifdef_branch(document, *line, branch, parent_text);
         }
         IfDefBranch::Else {
             line,
@@ -478,14 +490,21 @@ fn handle_ifdef_branch(document: &mut Document, _parent_line: u32, input_branch:
             handle_macro_token(document, *line, &macro_range);
             handle_lines(document, body);
             handle_macro_token(document, *endif_line, &endif_macro_range);
+            add_inlay_text(document, *endif_line, endif_macro_range.end, parent_text);
         }
         IfDefBranch::EndIf { line, macro_range } => {
             handle_macro_token(document, *line, &macro_range);
+            add_inlay_text(document, *line, macro_range.end, parent_text);
         }
     }
 }
 
-fn handle_ifndef_branch(document: &mut Document, _parent_line: u32, input_branch: &IfNotDefBranch) {
+fn handle_ifndef_branch(
+    document: &mut Document,
+    _parent_line: u32,
+    input_branch: &IfNotDefBranch,
+    parent_text: &str,
+) {
     let mut folding_range = FoldingRange::default();
     folding_range.start_line = input_branch.get_start_line();
     folding_range.end_line = input_branch.get_end_line();
@@ -504,9 +523,28 @@ fn handle_ifndef_branch(document: &mut Document, _parent_line: u32, input_branch
             handle_macro_token(document, *line, &macro_range);
             handle_lines(document, body);
             handle_macro_token(document, *endif_line, &endif_macro_range);
+            add_inlay_text(document, *endif_line, endif_macro_range.end, parent_text);
         }
         IfNotDefBranch::EndIf { line, macro_range } => {
             handle_macro_token(document, *line, &macro_range);
+            add_inlay_text(document, *line, macro_range.end, parent_text);
         }
     }
+}
+
+#[inline]
+fn add_inlay_text(document: &mut Document, line: u32, index: u32, text: &str) {
+    document.inlay_hints.push(InlayHint {
+        position: Position {
+            line: line,
+            character: index,
+        },
+        label: InlayHintLabel::String(text.to_string()),
+        kind: Some(InlayHintKind::TYPE),
+        text_edits: None,
+        tooltip: None,
+        padding_left: Some(true),
+        padding_right: Some(true),
+        data: None,
+    });
 }

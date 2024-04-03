@@ -11,14 +11,14 @@ use lsp_types::{
         DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
     },
     request::{
-        Completion, DocumentLinkRequest, FoldingRangeRequest, GotoDefinition, InlineValueRequest,
-        SemanticTokensFullRequest,
+        Completion, DocumentLinkRequest, FoldingRangeRequest, GotoDefinition, InlayHintRequest,
+        InlineValueRequest, SemanticTokensFullRequest,
     },
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentLink, DocumentLinkParams,
-    FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams, OneOf,
-    PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
-    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url,
+    FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams, InlayHint,
+    InlayHintParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams,
+    SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 use crate::{cache::Project, workspace};
@@ -36,6 +36,7 @@ enum MyRequests {
     DocumentLinkRequest,
     FoldingRangeRequest,
     GotoDefinition,
+    InlayHintRequest,
     InlineValueRequest,
     SemanticTokensFullRequest,
 }
@@ -148,6 +149,17 @@ impl Handler {
                 // TODO:
                 warn!("Received Unhandled InlineValueRequest: {params:?}");
             }
+            InlayHintRequest(id, params) => {
+                mlog!("Got InlayHintRequest: {id} {params:?}");
+                let result = self.handle_inlay_hint_request(&id, params);
+                let result = serde_json::to_value(&result).unwrap();
+                let response = Response {
+                    id,
+                    result: Some(result),
+                    error: None,
+                };
+                return Some(response);
+            }
             SemanticTokensFullRequest(id, params) => {
                 mlog!("Got SemanticTokensFullRequest: {id} {params:?}");
                 let result = self.handle_semantic_tokens_full(&id, params);
@@ -222,6 +234,38 @@ impl Handler {
             if let Some(doc) = cache.documents.get(&uri) {
                 if !doc.document_links.is_empty() {
                     return Some(doc.document_links.clone());
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        return None;
+    }
+
+    fn handle_inlay_hint_request(
+        &mut self,
+        id: &RequestId,
+        params: InlayHintParams,
+    ) -> Option<Vec<InlayHint>> {
+        let uri = params.text_document.uri;
+
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                if !doc.inlay_hints.is_empty() {
+                    let is_inside =
+                        |range: &lsp_types::Range, position: &lsp_types::Position| -> bool {
+                            position.line >= range.start.line && position.line <= range.end.line
+                        };
+
+                    return Some(
+                        doc.inlay_hints
+                            .iter()
+                            .filter(|&hint| is_inside(&params.range, &hint.position))
+                            .cloned()
+                            .collect(),
+                    );
                 } else {
                     return None;
                 }

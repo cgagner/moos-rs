@@ -153,6 +153,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
         // TODO: Get Inline value provider working
         //inline_value_provider: Some(OneOf::Left(true)),
+        inlay_hint_provider: Some(OneOf::Left(true)),
         document_link_provider: Some(DocumentLinkOptions {
             resolve_provider: Some(false),
             work_done_progress_options: WorkDoneProgressOptions::default(),

@@ -2,11 +2,6 @@ use crate::lexers::TokenRange;
 use lalrpop_util::lalrpop_mod;
 use lalrpop_util::ErrorRecovery;
 
-lalrpop_mod!(
-    #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-    pub moos
-); // synthesized by LALRPOP
-
 /// TODO: Dear Future Chris: Please fix this enumeration. This should be able
 /// to handle any of the tokens that can compose a value. Additionally, there
 /// needs to be a collection of this enum that implements the eval method
@@ -183,16 +178,11 @@ pub enum Line<'input> {
 mod tests {
 
     use crate::{
-        lexer::{Lexer, State},
         lexers::TokenRange,
+        moos::lexer::{Lexer, State},
     };
 
     use super::{Value, Values};
-
-    lalrpop_mod!(
-        #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-        pub moos
-    ); // syntesized by LALRPOP
 
     #[test]
     fn test_block_newline_fail() {

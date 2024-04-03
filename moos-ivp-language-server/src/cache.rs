@@ -1,7 +1,7 @@
 use crate::parsers::nsplug;
 use lsp_types::{
-    Diagnostic, DocumentLink, FoldingRange, SemanticToken, SemanticTokenModifier, SemanticTokens,
-    Url,
+    Diagnostic, DocumentLink, FoldingRange, InlayHint, SemanticToken, SemanticTokenModifier,
+    SemanticTokens, Url,
 };
 use moos_parser::lexers::TokenMap;
 use serde::{Deserialize, Serialize};
@@ -179,6 +179,7 @@ pub struct Document {
     pub diagnostics: Vec<Diagnostic>,
     pub folding_ranges: Vec<FoldingRange>,
     pub document_links: Vec<DocumentLink>,
+    pub inlay_hints: Vec<InlayHint>,
 }
 
 impl Document {
@@ -191,6 +192,7 @@ impl Document {
             diagnostics: Vec::new(),
             folding_ranges: Vec::new(),
             document_links: Vec::new(),
+            inlay_hints: Vec::new(),
         }
     }
 
@@ -204,6 +206,7 @@ impl Document {
         self.diagnostics.clear();
         self.folding_ranges.clear();
         self.document_links.clear();
+        self.inlay_hints.clear();
     }
 
     pub fn get_semantic_tokens(&self) -> SemanticTokens {

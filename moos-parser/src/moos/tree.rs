@@ -548,7 +548,7 @@ mod tests {
 
     use crate::{
         lexers::TokenRange,
-        nsplug::lexer::{Lexer, State},
+        moos::lexer::{Lexer, State},
     };
 
     use super::{Value, Values, Variable};

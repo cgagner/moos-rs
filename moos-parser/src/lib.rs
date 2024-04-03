@@ -2,25 +2,15 @@
 extern crate lalrpop_util;
 
 pub mod ast;
-pub mod error;
 pub mod helpers;
-pub mod lexer;
 pub mod lexers;
+pub mod moos;
 pub mod nsplug;
-pub mod parser;
 
 use lalrpop_util::ErrorRecovery;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type Lexer<'input, 'listen> = lexer::Lexer<'input, 'listen>;
-
-lalrpop_mod!(
-    #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-    pub moos
-); // syntesized by LALRPOP
-
-#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type LinesParser = moos::LinesParser;
+pub type LinesParser = moos::moos::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugLexer<'input> = nsplug::lexer::Lexer<'input>;
