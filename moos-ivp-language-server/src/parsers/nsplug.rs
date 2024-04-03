@@ -1,5 +1,5 @@
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
-use lsp_types::{Diagnostic, DiagnosticSeverity, FoldingRange};
+use lsp_types::{Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, Position};
 use moos_parser::{
     lexers::{self, Location, TokenMap, TokenRange},
     nsplug::{
@@ -45,10 +45,12 @@ pub fn new_warning_diagnostic(start: &Location, end: &Location, message: String)
 }
 
 pub fn parse(document: &mut Document) {
-    // TODO: We should be able to parse the document without cloning the text,
-    // but this breaks the borrow checker
+    // NOTE: This clone is of a Rc<String>. It should not perform a deep copy
+    // of the underlying String. This is needed to be able to pass a mutable
+    // reference to the Document and the Result from the parser to other
+    // functions.
     let text = document.text.clone();
-    let mut lexer = moos_parser::nsplug::lexer::Lexer::new(text.as_str());
+    let lexer = moos_parser::nsplug::lexer::Lexer::new(text.as_str());
     let mut state = moos_parser::nsplug::lexer::State::default();
     let result = PlugParser::new().parse(&mut state, text.as_str(), lexer);
 
@@ -58,7 +60,6 @@ pub fn parse(document: &mut Document) {
         handle_lines(document, &lines);
     }
 
-    let iter = document.diagnostics.iter();
     state.errors.iter().for_each(|e| {
         error!("Parse Error: {e:?}");
     });
@@ -137,7 +138,6 @@ pub fn parse(document: &mut Document) {
 
 fn handle_lines(document: &mut Document, lines: &Lines) {
     use moos_parser::nsplug::tree::Line::*;
-    use moos_parser::nsplug::tree::MacroType;
     for l in lines {
         match l {
             Macro {
@@ -239,7 +239,7 @@ fn handle_include(
         line,
         range.clone(),
         SemanticTokenInfo {
-            token_type: TokenTypes::Macro as u32,
+            token_type: TokenTypes::Keyword as u32,
             token_modifiers: 0,
         },
     );
@@ -248,6 +248,41 @@ fn handle_include(
             handle_variable_strings(document, line, &values, TokenTypes::String, 0);
         }
         IncludePath::Quote(quote) => handle_quote(document, line, &quote),
+    }
+
+    // TODO: This should really use the workspace, but for now we'll just
+    // handle this using the local file system.
+    if document.uri.scheme() == "file" {
+        let document_path = std::path::Path::new(document.uri.path());
+        if document_path.exists() && document_path.is_file() {
+            if let Some(parent_dir) = document_path.parent() {
+                let include_path = parent_dir.join(path.to_string());
+                if include_path.exists() && include_path.is_file() {
+                    let mut include_uri = document.uri.clone();
+                    if let Some(path_str) = include_path.to_str() {
+                        include_uri.set_path(path_str);
+
+                        // Finally, we can add the document link.
+                        let include_range = path.get_range();
+                        document.document_links.push(DocumentLink {
+                            range: lsp_types::Range {
+                                start: Position {
+                                    line,
+                                    character: include_range.start,
+                                },
+                                end: Position {
+                                    line,
+                                    character: include_range.end,
+                                },
+                            },
+                            target: Some(include_uri),
+                            tooltip: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
     }
 
     if let Some(tag) = tag {
@@ -475,61 +510,3 @@ fn handle_ifndef_branch(document: &mut Document, _parent_line: u32, input_branch
         }
     }
 }
-
-/*
-
-TODO: These are reminders of tokens that we should be handling.
-
-Token::Comment(_comment) => Some(SemanticTokenInfo {
-    token_type: TokenTypes::Comment as u32,
-    token_modifiers: 0,
-}),
-
-Token::BlockKeyword(key) => {
-    // TODO:  This should check the value of name for the current
-    // application
-    self.cache.semantic_tokens.push(SemanticToken {
-        delta_line: delta_line,
-        delta_start: delta_index,
-        length: length,
-        token_type: TokenTypes::Keyword as u32,
-        token_modifiers_bitset: 0,
-    });
-    added = true;
-}
-
-Token::UnknownMacro(value) => {
-    let d = Diagnostic::new(
-        lsp_types::Range {
-            start: lsp_types::Position {
-                line: start_loc.line,
-                character: start_loc.index,
-            },
-            end: lsp_types::Position {
-                line: end_loc.line,
-                character: end_loc.index,
-            },
-        },
-        Some(DiagnosticSeverity::ERROR),
-        None,
-        None,
-        format!("Unknown macro: {}", value),
-        None,
-        None,
-    );
-    self.cache.diagnostics.push(d);
-
-    // added = true;
-}
-
-Token::OrOperator | Token::AndOperator => {
-    self.cache.semantic_tokens.push(SemanticToken {
-        delta_line: delta_line,
-        delta_start: delta_index,
-        length: length,
-        token_type: TokenTypes::Operator as u32,
-        token_modifiers_bitset: 0,
-    });
-    added = true;
-}
-*/

@@ -1,10 +1,11 @@
 use crate::parsers::nsplug;
 use lsp_types::{
-    Diagnostic, FoldingRange, SemanticToken, SemanticTokenModifier, SemanticTokens, Url,
+    Diagnostic, DocumentLink, FoldingRange, SemanticToken, SemanticTokenModifier, SemanticTokens,
+    Url,
 };
 use moos_parser::lexers::TokenMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
@@ -142,7 +143,7 @@ enum DocumentLinkType {
 
 pub struct Project {
     pub root: String,
-    pub documents: HashMap<Url, Box<Document>>,
+    pub documents: HashMap<Url, Document>,
 }
 
 impl Project {
@@ -155,16 +156,15 @@ impl Project {
 
     /// Creates or updates a `Document` with the specified `uri` and `text`
     /// and updates the cache for the document.
-    pub fn insert(&mut self, uri: &Url, text: &str) -> &Document {
+    ///
+    /// NOTE: This method takes ownership of the `text`
+    pub fn insert(&mut self, uri: &Url, text: String) -> &Document {
         let document = self
             .documents
             .entry(uri.clone())
-            .or_insert(Box::new(Document::new(uri.clone(), String::new())));
+            .or_insert(Document::new(uri.clone(), String::new()));
 
-        // Parsers don't handle EOF without an extra new-line. Hack solution is
-        // to add a new line to the end of the document.
-        let mut text = text.to_string() + "\n";
-        document.text = text;
+        document.text = Arc::new(text);
         document.refresh();
         return document;
     }
@@ -173,22 +173,24 @@ impl Project {
 #[derive(Debug)]
 pub struct Document {
     pub uri: Url,
-    pub text: String,
+    pub text: Arc<String>,
     pub file_type: FileType,
     pub semantic_tokens: TokenMap<SemanticTokenInfo>,
     pub diagnostics: Vec<Diagnostic>,
     pub folding_ranges: Vec<FoldingRange>,
+    pub document_links: Vec<DocumentLink>,
 }
 
 impl Document {
     pub fn new(uri: Url, text: String) -> Self {
         Self {
             uri,
-            text,
+            text: Arc::new(text),
             file_type: FileType::Other,
             semantic_tokens: TokenMap::new(),
             diagnostics: Vec::new(),
             folding_ranges: Vec::new(),
+            document_links: Vec::new(),
         }
     }
 
@@ -201,6 +203,7 @@ impl Document {
         self.semantic_tokens.clear();
         self.diagnostics.clear();
         self.folding_ranges.clear();
+        self.document_links.clear();
     }
 
     pub fn get_semantic_tokens(&self) -> SemanticTokens {

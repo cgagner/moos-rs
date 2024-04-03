@@ -50,16 +50,17 @@ mod lsp;
 mod parsers;
 mod tracer;
 mod trees;
+mod workspace;
 
 use std::error::Error;
 
 use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
-    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities,
+    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, DocumentLinkOptions,
     FoldingRangeProviderCapability, GotoDefinitionResponse, InitializeParams, OneOf,
     SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
     SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
 };
 
 use tracing::trace as mlog;
@@ -96,7 +97,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
 
     /*
-    ypes {
+    {
         /// For tokens that represent a comment.
         Comment = 0,
         /// For tokens that represent a language keyword.
@@ -150,6 +151,12 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             ..Default::default()
         })),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+        // TODO: Get Inline value provider working
+        //inline_value_provider: Some(OneOf::Left(true)),
+        document_link_provider: Some(DocumentLinkOptions {
+            resolve_provider: Some(false),
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+        }),
         ..Default::default()
     };
 

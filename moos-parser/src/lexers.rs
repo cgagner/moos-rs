@@ -39,9 +39,9 @@ impl Into<lsp_types::Position> for Location {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TokenRange {
     /// Starting character in a line (inclusive)
-    start: u32,
+    pub start: u32,
     /// Ending character in a line (exclusive)
-    end: u32,
+    pub end: u32,
 }
 
 impl TokenRange {
@@ -439,7 +439,6 @@ pub fn scan_integer(s: &str) -> Result<i64, ParseIntError> {
 /// Scan a string for a float.
 pub fn scan_float(s: &str) -> Result<f64, ParseFloatError> {
     if s.eq_ignore_ascii_case("nan") {
-        trace!("scan_float: {}", s);
         Ok(f64::NAN)
     } else {
         s.parse::<f64>()
@@ -448,7 +447,6 @@ pub fn scan_float(s: &str) -> Result<f64, ParseFloatError> {
 
 // Scan a string for a boolean.
 pub fn scan_bool(s: &str) -> Result<bool, ()> {
-    trace!("Scanning for boolean: {}", s);
     if s.eq_ignore_ascii_case("true") {
         Ok(true)
     } else if s.eq_ignore_ascii_case("false") {

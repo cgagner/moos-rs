@@ -162,6 +162,15 @@ pub enum IncludePath<'input> {
     Quote(Quote<'input>),
 }
 
+impl<'input> IncludePath<'input> {
+    pub fn get_range(&self) -> &TokenRange {
+        match self {
+            IncludePath::VariableStrings(_, range) => range,
+            IncludePath::Quote(quote) => &quote.range,
+        }
+    }
+}
+
 impl<'input> ToString for IncludePath<'input> {
     fn to_string(&self) -> String {
         match self {

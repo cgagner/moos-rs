@@ -1,18 +1,27 @@
-use std::error::Error;
+use std::{
+    error::Error,
+    f32::consts::E,
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 
 use lsp_server::{Connection, Message, Notification, RequestId, Response};
 use lsp_types::{
     notification::{
         DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
     },
-    request::{Completion, FoldingRangeRequest, GotoDefinition, SemanticTokensFullRequest},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, FoldingRange, FoldingRangeParams,
-    GotoDefinitionResponse, InitializeParams, OneOf, PublishDiagnosticsParams, SemanticTokens,
-    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    request::{
+        Completion, DocumentLinkRequest, FoldingRangeRequest, GotoDefinition, InlineValueRequest,
+        SemanticTokensFullRequest,
+    },
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentLink, DocumentLinkParams,
+    FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams, OneOf,
+    PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
+    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Url,
 };
 
-use crate::cache::Project;
+use crate::{cache::Project, workspace};
 use tracing::debug as mlog;
 use tracing::{
     debug, debug_span, error, error_span, info, info_span, trace, trace_span, warn, warn_span,
@@ -24,8 +33,10 @@ use lsp_server_derive_macro::{notification_handler, request_handler};
 #[request_handler]
 enum MyRequests {
     Completion,
+    DocumentLinkRequest,
     FoldingRangeRequest,
     GotoDefinition,
+    InlineValueRequest,
     SemanticTokensFullRequest,
 }
 
@@ -38,7 +49,7 @@ enum MyNotifications {
 }
 
 pub struct Handler {
-    cache: Project,
+    cache: Arc<Mutex<Project>>,
     connection: Connection,
     params: InitializeParams,
 }
@@ -46,8 +57,18 @@ pub struct Handler {
 impl Handler {
     pub fn new(connection: Connection, params: InitializeParams) -> Self {
         let root = params.root_path.clone().unwrap_or_default();
+
+        let cache = Arc::new(Mutex::new(Project::new(root)));
+
+        // TODO: Need a better way to scan the entire workspace.
+        if let Some(root_path) = params.root_path.clone() {
+            if let Some(root_uri) = params.root_uri.clone() {
+                workspace::scan_workspace(&connection, cache.clone(), root_path, root_uri);
+            }
+        }
+
         Self {
-            cache: Project::new(root),
+            cache,
             connection,
             params,
         }
@@ -88,6 +109,20 @@ impl Handler {
         use MyRequests::*;
         info!("Got request: {:?}", request.method);
         match MyRequests::from(request) {
+            Completion(id, params) => {
+                mlog!("Got completion request #{id}: {params:?}");
+            }
+            DocumentLinkRequest(id, params) => {
+                //
+                let result = self.handle_document_link_request(&id, params);
+                let result = serde_json::to_value(&result).unwrap();
+                let response = Response {
+                    id,
+                    result: Some(result),
+                    error: None,
+                };
+                return Some(response);
+            }
             GotoDefinition(id, params) => {
                 mlog!("got gotoDefinition request #{id}: {params:?}");
                 let result = Some(GotoDefinitionResponse::Array(Vec::new()));
@@ -99,9 +134,8 @@ impl Handler {
                 };
                 return Some(response);
             }
-            SemanticTokensFullRequest(id, params) => {
-                mlog!("Got SemanticTokensFullRequest: {id} {params:?}");
-                let result = self.handle_semantic_tokens_full(&id, params);
+            FoldingRangeRequest(id, params) => {
+                let result = self.handle_folding_range_request(&id, params);
                 let result = serde_json::to_value(&result).unwrap();
                 let response = Response {
                     id,
@@ -110,12 +144,13 @@ impl Handler {
                 };
                 return Some(response);
             }
-            Completion(id, params) => {
-                mlog!("Got completion request #{id}: {params:?}");
+            InlineValueRequest(id, params) => {
+                // TODO:
+                warn!("Received Unhandled InlineValueRequest: {params:?}");
             }
-
-            FoldingRangeRequest(id, params) => {
-                let result = self.handle_folding_range_request(&id, params);
+            SemanticTokensFullRequest(id, params) => {
+                mlog!("Got SemanticTokensFullRequest: {id} {params:?}");
+                let result = self.handle_semantic_tokens_full(&id, params);
                 let result = serde_json::to_value(&result).unwrap();
                 let response = Response {
                     id,
@@ -139,19 +174,19 @@ impl Handler {
     ) -> Option<SemanticTokensResult> {
         let uri = params.text_document.uri;
 
-        let result = if let Some(doc) = self.cache.documents.get(&uri) {
-            // Loop through the tokens and convert them
-            let tokens = SemanticTokens {
-                result_id: None,
-                data: doc.get_semantic_tokens().data,
-            };
-            info!("Semantic Tokens for {uri} {tokens:?}");
-            Some(SemanticTokensResult::Tokens(tokens))
-        } else {
-            None
-        };
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                // Loop through the tokens and convert them
+                let tokens = SemanticTokens {
+                    result_id: None,
+                    data: doc.get_semantic_tokens().data,
+                };
+                trace!("Semantic Tokens for {uri} {tokens:?}");
+                return Some(SemanticTokensResult::Tokens(tokens));
+            }
+        }
 
-        return result;
+        return None;
     }
 
     fn handle_folding_range_request(
@@ -161,15 +196,40 @@ impl Handler {
     ) -> Option<Vec<FoldingRange>> {
         let uri = params.text_document.uri;
 
-        if let Some(doc) = self.cache.documents.get(&uri) {
-            if !doc.folding_ranges.is_empty() {
-                return Some(doc.folding_ranges.clone());
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                if !doc.folding_ranges.is_empty() {
+                    return Some(doc.folding_ranges.clone());
+                } else {
+                    return None;
+                }
             } else {
                 return None;
             }
-        } else {
-            return None;
         }
+
+        return None;
+    }
+
+    fn handle_document_link_request(
+        &mut self,
+        id: &RequestId,
+        params: DocumentLinkParams,
+    ) -> Option<Vec<DocumentLink>> {
+        let uri = params.text_document.uri;
+
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                if !doc.document_links.is_empty() {
+                    return Some(doc.document_links.clone());
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        return None;
     }
 
     //-----------------------------------------------------------------------------
@@ -200,21 +260,25 @@ impl Handler {
         let uri = &params.text_document.uri;
         info!("Document Opened: {uri}");
 
-        let document = self.cache.insert(&uri, &params.text_document.text);
+        if let Ok(cache) = &mut self.cache.lock() {
+            let document = cache.insert(&uri, params.text_document.text);
 
-        let diagnostics =
-            PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
-        let params = serde_json::to_value(&diagnostics).unwrap();
-        use lsp_types::notification::Notification;
-        let notification = lsp_server::Notification {
-            method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
-            params,
-        };
-        self.connection
-            .sender
-            .send(Message::Notification(notification))?;
+            let diagnostics =
+                PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
+            let params = serde_json::to_value(&diagnostics).unwrap();
+            use lsp_types::notification::Notification;
+            let notification = lsp_server::Notification {
+                method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
+                params,
+            };
+            self.connection
+                .sender
+                .send(Message::Notification(notification))?;
 
-        Ok(())
+            return Ok(());
+        } else {
+            return Err(anyhow::Error::msg("Failed to acquire project lock."));
+        }
     }
 
     pub fn handle_did_change_text_document(
@@ -247,21 +311,27 @@ impl Handler {
                 )));
             }
 
-            let document = self.cache.insert(&uri, &change.text);
+            if let Ok(cache) = &mut self.cache.lock() {
+                let document = cache.insert(&uri, change.text);
 
-            let diagnostics =
-                PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
-            let params = serde_json::to_value(&diagnostics).unwrap();
-            use lsp_types::notification::Notification;
-            let notification = lsp_server::Notification {
-                method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
-                params,
-            };
-            self.connection
-                .sender
-                .send(Message::Notification(notification))?;
+                let diagnostics =
+                    PublishDiagnosticsParams::new(uri.clone(), document.diagnostics.clone(), None);
+                let params = serde_json::to_value(&diagnostics).unwrap();
+                use lsp_types::notification::Notification;
+                let notification = lsp_server::Notification {
+                    method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
+                    params,
+                };
+
+                let sender = self.connection.sender.clone();
+                self.connection
+                    .sender
+                    .send(Message::Notification(notification))?;
+            } else {
+                return Err(anyhow::Error::msg("Failed to acquire cache lock"));
+            }
         }
 
-        Ok(())
+        return Ok(());
     }
 }
