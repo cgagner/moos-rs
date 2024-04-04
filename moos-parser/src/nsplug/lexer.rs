@@ -15,12 +15,10 @@ use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 
 use core::cmp::max;
 use core::str;
-use core::str::{CharIndices, ParseBoolError};
+use core::str::CharIndices;
 use lalrpop_util::ErrorRecovery;
 use std::collections::{HashMap, VecDeque};
 use std::iter::{Chain, Repeat, Skip};
-use std::num::{ParseFloatError, ParseIntError};
-use tracing::{debug, error, info, trace, warn};
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
 pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, PlugParseError<'input>>>;
@@ -342,7 +340,7 @@ impl<'input> Lexer<'input> {
         // TODO: We probably should remove parsing comments
 
         // Find the macro by looking for the next whitespace, newline, or comment
-        let (token, next_index) = if let Some(((ii, cc), (_iii, _ccc))) =
+        let (token, _next_index) = if let Some(((ii, cc), (_iii, _ccc))) =
             self.iter.find(|&((_ii, cc), (_iii, ccc))| {
                 cc == ' ' || cc == '\t'  // Whitespace
                 || cc == '\n'  // Newline
@@ -763,7 +761,7 @@ impl<'input> Lexer<'input> {
 
         while let Some(((ii, cc), (_iii, _ccc))) = self
             .iter
-            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == ')')
+            .find(|&((_ii, cc), (_iii, _ccc))| cc == '\n' || cc == ')')
         {
             if cc == '\n' {
                 // Partial Variable

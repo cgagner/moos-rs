@@ -1,11 +1,6 @@
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
-use lalrpop_util::ErrorRecovery;
 
-/// TODO: Dear Future Chris: Please fix this enumeration. This should be able
-/// to handle any of the tokens that can compose a value. Additionally, there
-/// needs to be a collection of this enum that implements the eval method
-/// to get a string.
 #[derive(Debug)]
 pub enum Value<'input> {
     Boolean(bool, &'input str, TokenRange),
@@ -71,10 +66,10 @@ pub enum Variable<'input> {
 impl<'input> ToString for Variable<'input> {
     fn to_string(&self) -> String {
         match self {
-            Variable::Regular { text, range } => format!("$({})", text),
-            Variable::Upper { text, range } => format!("%({})", text),
-            Variable::Partial { text, range } => format!("$({}", text),
-            Variable::PartialUpper { text, range } => format!("%({}", text),
+            Variable::Regular { text, range: _ } => format!("$({})", text),
+            Variable::Upper { text, range: _ } => format!("%({})", text),
+            Variable::Partial { text, range: _ } => format!("$({}", text),
+            Variable::PartialUpper { text, range: _ } => format!("%({}", text),
         }
     }
 }
@@ -233,10 +228,17 @@ pub enum MacroType<'input> {
 impl<'input> ToString for MacroType<'input> {
     fn to_string(&self) -> String {
         match self {
-            MacroType::Define { definition, range } => {
+            MacroType::Define {
+                definition,
+                range: _,
+            } => {
                 format!("#define {}", definition.to_string())
             }
-            MacroType::Include { path, tag, range } => {
+            MacroType::Include {
+                path,
+                tag,
+                range: _,
+            } => {
                 if let Some(tag) = tag {
                     format!("#include {} {}", path.to_string(), tag.to_string())
                 } else {
@@ -245,20 +247,20 @@ impl<'input> ToString for MacroType<'input> {
             }
             MacroType::IfDef {
                 condition,
-                branch,
-                body,
-                range,
+                branch: _,
+                body: _,
+                range: _,
             } => {
                 // TODO: Need to recursively print the branch and lines
                 format!("#ifdef {}", condition.to_string())
             }
             MacroType::IfNotDef {
                 clauses,
-                branch,
-                body,
-                range,
+                branch: _,
+                body: _,
+                range: _,
             } => {
-                let mut rtn = "#ifndef ".to_string();
+                let rtn = "#ifndef ".to_string();
                 clauses
                     .iter()
                     .fold(rtn, |acc, v| acc + " " + v.to_string().as_str())
@@ -518,13 +520,13 @@ pub enum Line<'input> {
 impl<'input> ToString for Line<'input> {
     fn to_string(&self) -> String {
         match self {
-            Line::Comment { comment, line } => {
+            Line::Comment { comment, line: _ } => {
                 format!("// {comment}")
             }
             Line::Macro {
                 macro_type,
                 comment,
-                line,
+                line: _,
             } => {
                 if let Some(comment) = comment {
                     format!("{} // {comment}", macro_type.to_string())
@@ -532,7 +534,7 @@ impl<'input> ToString for Line<'input> {
                     macro_type.to_string()
                 }
             }
-            Line::Variable { variable, line } => variable.to_string(),
+            Line::Variable { variable, line: _ } => variable.to_string(),
             Line::Error(_, _) => "".to_string(),
             Line::EndOfLine => "".to_string(),
         }
@@ -546,10 +548,7 @@ vec_wrapper!(Lines, Line);
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        lexers::TokenRange,
-        nsplug::lexer::{Lexer, State},
-    };
+    use crate::lexers::TokenRange;
 
     use super::{Value, Values, Variable};
 
