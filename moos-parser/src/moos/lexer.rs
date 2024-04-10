@@ -15,12 +15,11 @@ use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 
 use core::cmp::max;
 use core::str;
-use core::str::{CharIndices, ParseBoolError};
+use core::str::CharIndices;
 use lalrpop_util::ErrorRecovery;
 use std::collections::{HashMap, VecDeque};
 use std::iter::{Chain, Repeat, Skip};
-use std::num::{ParseFloatError, ParseIntError};
-use tracing::{debug, error, info, trace, warn};
+use tracing::trace;
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
 pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
@@ -178,36 +177,6 @@ impl<'input> Lexer<'input> {
         None
     }
 
-    /**
-     * Drop the unhandled string from an the previous index to the current index
-     * of a string.
-     *
-     * # Parameters:
-     * * `index`: Current index
-     */
-    #[inline]
-    fn drop_unhandled_string(&mut self, index: usize) -> Option<(usize, &'input str)> {
-        let result = if let Some(prev_i) = self.previous_index {
-            let start_index = prev_i;
-            let unhandled = &self.input[start_index..index];
-            if unhandled.is_empty() {
-                None
-            } else {
-                Some((start_index, unhandled))
-            }
-        } else {
-            None
-        };
-
-        if index > 0 {
-            self.previous_index = self.get_safe_index(index);
-        } else {
-            self.previous_index = None;
-        }
-
-        return result;
-    }
-
     #[inline]
     fn _handle_new_line(&mut self, i: usize) {
         self.token_queue
@@ -317,7 +286,7 @@ impl<'input> Lexer<'input> {
         );
     }
 
-    fn tokenize_macro(&mut self, i: usize) {
+    fn tokenize_macro(&mut self, _i: usize) {
         // If its not the start of the line, it can't be a macro.
         if !self.start_of_line {
             return;
@@ -332,7 +301,7 @@ impl<'input> Lexer<'input> {
 
         // TODO: We should only skip lines that start with known macros
 
-        while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| c == '\n') {
+        while let Some(((i, c), (_ii, _cc))) = self.iter.find(|&((_i, c), (_ii, _cc))| c == '\n') {
             match c {
                 '\n' => {
                     // Setting the previous index to drop previous tokens
@@ -520,7 +489,7 @@ impl<'input> Lexer<'input> {
 
         while let Some(((ii, cc), (_iii, _ccc))) = self
             .iter
-            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == '}')
+            .find(|&((_ii, cc), (_iii, _ccc))| cc == '\n' || cc == '}')
         {
             if cc == '\n' {
                 // Partial Variable
