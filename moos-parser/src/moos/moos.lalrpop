@@ -92,6 +92,11 @@ Define: Line<'input> = {
     <l:@L> "define:" <r:@R> <assignment: Assignment> => Line::Define{assignment, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `define:`")},
 }
 
+CommentOrEmptyLine: Line<'input> = {
+    "EOL" => Line::EndOfLine,
+    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+}
+
 ProcessConfigLine: Line<'input> = {
     "EOL" => Line::EndOfLine,
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
@@ -125,6 +130,7 @@ ProcessConfigLine: Line<'input> = {
 
 ProcessConfig: Line<'input> = {
     <pl:@L> "ProcessConfig" <pr:@R> "=" <process_name: VariableStrings> <process_config_comment: Comment?> "EOL" 
+    <prelude_comments: CommentOrEmptyLine*>
     <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
     <body: ProcessConfigLine*>
     <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
@@ -132,6 +138,7 @@ ProcessConfig: Line<'input> = {
             process_config: tree::ProcessConfig{
                 process_config_comment,
                 process_name,
+                prelude_comments: prelude_comments.into(),
                 open_curly_line: ocl.line,
                 open_curly_index: ocl.index,
                 open_curly_comment,

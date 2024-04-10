@@ -44,7 +44,7 @@ pub fn new_error_diagnostic(start: &Location, end: &Location, message: String) -
 }
 
 pub fn new_warning_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::ERROR, start, end, message)
+    new_diagnostic(DiagnosticSeverity::WARNING, start, end, message)
 }
 
 pub fn parse(document: &mut Document) {
@@ -356,6 +356,14 @@ fn handle_process_config(
         handle_comment(document, line, &comment);
     }
 
+    // Prelude Comments
+    if !process_config.prelude_comments.is_empty() {
+        // NOTE: Invalid lines are handled by the parser. This should just
+        // add comments.
+        handle_lines(document, &process_config.prelude_comments);
+    }
+
+    // Open Curly Comment
     if let Some(comment) = &process_config.open_curly_comment {
         handle_comment(document, process_config.open_curly_line, &comment);
     }

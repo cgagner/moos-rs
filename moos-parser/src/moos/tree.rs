@@ -177,7 +177,7 @@ pub struct ProcessConfig<'input> {
     /// Name of the process
     pub process_name: VariableStrings<'input>,
     /// Comments between ProcessConfig line and curly brace
-    //pub prelude_comments: Vec<Comment<'input>>,
+    pub prelude_comments: Lines<'input>,
     /// Line number for the opening curly brace
     pub open_curly_line: u32,
     /// Line number for the opening curly brace

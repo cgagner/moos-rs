@@ -18,6 +18,8 @@ use moos_parser::{
 };
 use tracing::{debug, error, info, trace, warn};
 
+use super::find_relative_file;
+
 pub fn new_diagnostic(
     severity: DiagnosticSeverity,
     start: &Location,
@@ -44,7 +46,7 @@ pub fn new_error_diagnostic(start: &Location, end: &Location, message: String) -
 }
 
 pub fn new_warning_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::ERROR, start, end, message)
+    new_diagnostic(DiagnosticSeverity::WARNING, start, end, message)
 }
 
 pub fn parse(document: &mut Document) {
@@ -259,39 +261,24 @@ fn handle_include(
 
     // TODO: This should really use the workspace, but for now we'll just
     // handle this using the local file system.
-    if document.uri.scheme() == "file" {
-        let document_path = std::path::Path::new(document.uri.path());
-        if document_path.exists() && document_path.is_file() {
-            if let Some(parent_dir) = document_path.parent() {
-                let include_path = parent_dir.join(path.to_string());
-                if include_path.exists() && include_path.is_file() {
-                    let mut include_uri = document.uri.clone();
-                    if let Some(path_str) = include_path.to_str() {
-                        include_uri.set_path(path_str);
-
-                        // Finally, we can add the document link.
-                        let include_range = path.get_range();
-                        document.document_links.push(DocumentLink {
-                            range: lsp_types::Range {
-                                start: Position {
-                                    line,
-                                    character: include_range.start,
-                                },
-                                end: Position {
-                                    line,
-                                    character: include_range.end,
-                                },
-                            },
-                            target: Some(include_uri),
-                            tooltip: None,
-                            data: None,
-                        });
-                    }
-                }
-            }
-        }
+    if let Some(include_url) = find_relative_file(&document.uri, path.to_string().as_str()) {
+        let include_range = path.get_range();
+        document.document_links.push(DocumentLink {
+            range: lsp_types::Range {
+                start: Position {
+                    line,
+                    character: include_range.start,
+                },
+                end: Position {
+                    line,
+                    character: include_range.end,
+                },
+            },
+            target: Some(include_url),
+            tooltip: None,
+            data: None,
+        });
     }
-
     if let Some(tag) = tag {
         document.semantic_tokens.insert(
             line,
