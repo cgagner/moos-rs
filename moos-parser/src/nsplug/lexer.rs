@@ -647,7 +647,6 @@ impl<'input> Lexer<'input> {
                 }
                 // Handle Variables inside of quotes
                 cc if (cc == '$' && ccc == '(') => {
-                    // TODO: Add Quote Begin
                     let found_variable = self.tokenize_variable(
                         ii,
                         cc,

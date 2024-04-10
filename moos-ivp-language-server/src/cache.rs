@@ -1,4 +1,5 @@
-use crate::parsers::nsplug;
+use crate::parsers::{moos, nsplug};
+
 use lsp_types::{
     Diagnostic, DocumentLink, FoldingRange, InlayHint, SemanticToken, SemanticTokenModifier,
     SemanticTokens, Url,
@@ -60,6 +61,8 @@ pub enum TokenTypes {
     Type,
     /// Namespace
     Namespace,
+    /// Struct
+    Struct,
 }
 
 impl Into<u32> for TokenTypes {
@@ -198,7 +201,10 @@ impl Document {
 
     pub fn refresh(&mut self) {
         self.clear();
+
+        // TODO: Check File Type
         nsplug::parse(self);
+        moos::parse(self);
     }
 
     pub fn clear(&mut self) {

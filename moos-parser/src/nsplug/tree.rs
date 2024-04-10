@@ -129,13 +129,13 @@ vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug)]
 pub struct Quote<'input> {
-    pub content: VariableStrings<'input>,
+    pub content: Values<'input>,
     pub range: TokenRange,
 }
 
 impl<'input> ToString for Quote<'input> {
     fn to_string(&self) -> String {
-        return format!("\"{}\"", self.content.eval());
+        return format!("\"{}\"", self.content.to_string());
     }
 }
 

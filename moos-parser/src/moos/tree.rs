@@ -1,11 +1,6 @@
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
-use lalrpop_util::ErrorRecovery;
 
-/// TODO: Dear Future Chris: Please fix this enumeration. This should be able
-/// to handle any of the tokens that can compose a value. Additionally, there
-/// needs to be a collection of this enum that implements the eval method
-/// to get a string.
 #[derive(Debug)]
 pub enum Value<'input> {
     Boolean(bool, &'input str, TokenRange),
@@ -55,15 +50,7 @@ pub enum Variable<'input> {
         text: &'input str,
         range: TokenRange,
     },
-    Upper {
-        text: &'input str,
-        range: TokenRange,
-    },
     Partial {
-        text: &'input str,
-        range: TokenRange,
-    },
-    PartialUpper {
         text: &'input str,
         range: TokenRange,
     },
@@ -71,10 +58,8 @@ pub enum Variable<'input> {
 impl<'input> ToString for Variable<'input> {
     fn to_string(&self) -> String {
         match self {
-            Variable::Regular { text, range } => format!("$({})", text),
-            Variable::Upper { text, range } => format!("%({})", text),
-            Variable::Partial { text, range } => format!("$({}", text),
-            Variable::PartialUpper { text, range } => format!("%({}", text),
+            Variable::Regular { text, range: _ } => format!("${{{}}}", text),
+            Variable::Partial { text, range: _ } => format!("${{{}", text),
         }
     }
 }
@@ -134,13 +119,13 @@ vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug)]
 pub struct Quote<'input> {
-    pub content: VariableStrings<'input>,
+    pub content: Values<'input>,
     pub range: TokenRange,
 }
 
 impl<'input> ToString for Quote<'input> {
     fn to_string(&self) -> String {
-        return format!("\"{}\"", self.content.eval());
+        return format!("\"{}\"", self.content.to_string());
     }
 }
 
@@ -151,361 +136,101 @@ impl<'input> From<Quote<'input>> for Value<'input> {
 }
 
 #[derive(Debug)]
-pub enum IncludePath<'input> {
-    VariableStrings(VariableStrings<'input>, TokenRange),
-    Quote(Quote<'input>),
-}
-
-impl<'input> IncludePath<'input> {
-    pub fn get_range(&self) -> &TokenRange {
-        match self {
-            IncludePath::VariableStrings(_, range) => range,
-            IncludePath::Quote(quote) => &quote.range,
-        }
-    }
-}
-
-impl<'input> ToString for IncludePath<'input> {
-    fn to_string(&self) -> String {
-        match self {
-            Self::VariableStrings(values, _) => values.to_string(),
-            // We won't evaluate plug variables as part of this parser.
-            Self::Quote(quote) => quote.to_string(),
-        }
-    }
-}
-
-impl<'input> From<Quote<'input>> for IncludePath<'input> {
-    fn from(value: Quote<'input>) -> Self {
-        Self::Quote(value)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct IncludeTag<'input> {
-    pub tag: &'input str,
-    /// Range of the Include tag. THis includes the start and ending brackets
+pub struct Comment<'input> {
+    pub text: &'input str,
     pub range: TokenRange,
 }
 
-impl<'input> IncludeTag<'input> {
-    pub fn new(tag: &'input str, range: TokenRange) -> Self {
-        Self { tag, range }
-    }
-}
-
-impl<'input> ToString for IncludeTag<'input> {
+impl<'input> ToString for Comment<'input> {
     fn to_string(&self) -> String {
-        format!("<{}>", self.tag)
+        format!("// {}", self.text)
     }
 }
 
 #[derive(Debug)]
-pub enum MacroType<'input> {
-    Define {
-        definition: MacroDefinition<'input>,
-        /// Range of the "#define"
-        range: TokenRange,
-    },
-    Include {
-        path: IncludePath<'input>,
-        /// Optional include tag. Added in 2020.
-        tag: Option<IncludeTag<'input>>,
-        /// Range of the "#include"
-        range: TokenRange,
-    },
-    IfDef {
-        condition: MacroCondition<'input>,
-        branch: IfDefBranch<'input>,
-        body: Lines<'input>,
-        /// Range of the "#ifdef"
-        range: TokenRange,
-    },
-    IfNotDef {
-        clauses: IfNotDefClauses<'input>,
-        branch: IfNotDefBranch<'input>,
-        body: Lines<'input>,
-        /// Range of the "#ifndef"
-        range: TokenRange,
-    },
-}
 
-impl<'input> ToString for MacroType<'input> {
-    fn to_string(&self) -> String {
-        match self {
-            MacroType::Define { definition, range } => {
-                format!("#define {}", definition.to_string())
-            }
-            MacroType::Include { path, tag, range } => {
-                if let Some(tag) = tag {
-                    format!("#include {} {}", path.to_string(), tag.to_string())
-                } else {
-                    format!("#include {}", path.to_string())
-                }
-            }
-            MacroType::IfDef {
-                condition,
-                branch,
-                body,
-                range,
-            } => {
-                // TODO: Need to recursively print the branch and lines
-                format!("#ifdef {}", condition.to_string())
-            }
-            MacroType::IfNotDef {
-                clauses,
-                branch,
-                body,
-                range,
-            } => {
-                let mut rtn = "#ifndef ".to_string();
-                clauses
-                    .iter()
-                    .fold(rtn, |acc, v| acc + " " + v.to_string().as_str())
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct MacroDefinition<'input> {
+pub struct Assignment<'input> {
     pub name: VariableStrings<'input>,
     pub value: Values<'input>,
+    pub comment: Option<Comment<'input>>,
 }
 
-impl<'input> MacroDefinition<'input> {
-    /// Create a new MacroDefinition
-    pub fn new(name: VariableStrings<'input>, value: Values<'input>) -> Self {
-        MacroDefinition { name, value }
-    }
-}
-
-impl<'input> ToString for MacroDefinition<'input> {
+impl<'input> ToString for Assignment<'input> {
     fn to_string(&self) -> String {
-        return format!("{} {}", self.name.to_string(), self.value.to_string());
-    }
-}
-
-#[derive(Debug)]
-pub enum MacroCondition<'input> {
-    // Simple Definition
-    Simple(MacroDefinition<'input>),
-    // Disjunction Expression (a.k.a. Logical-Or)
-    Disjunction {
-        operator_range: TokenRange,
-        lhs: MacroDefinition<'input>,
-        rhs: Box<MacroCondition<'input>>,
-    },
-    // Conjunction Expression (a.k.a. Logical-And)
-    Conjunction {
-        operator_range: TokenRange,
-        lhs: MacroDefinition<'input>,
-        rhs: Box<MacroCondition<'input>>,
-    },
-}
-
-impl<'input> ToString for MacroCondition<'input> {
-    fn to_string(&self) -> String {
-        match self {
-            MacroCondition::Simple(condition) => condition.to_string(),
-            MacroCondition::Disjunction {
-                operator_range: _,
-                lhs,
-                rhs,
-            } => format!("{} || {}", lhs.to_string(), rhs.to_string()),
-            MacroCondition::Conjunction {
-                operator_range: _,
-                lhs,
-                rhs,
-            } => format!("{} && {}", lhs.to_string(), rhs.to_string()),
+        if let Some(comment) = &self.comment {
+            format!(
+                "{} = {} {}",
+                self.name.to_string(),
+                self.value.to_string(),
+                comment.to_string(),
+            )
+        } else {
+            format!("{} = {}", self.name.to_string(), self.value.to_string())
         }
     }
 }
 
 #[derive(Debug)]
-pub enum IfDefBranch<'input> {
-    ElseIfDef {
-        line: u32,
-        macro_range: TokenRange,
-        condition: MacroCondition<'input>,
-        body: Lines<'input>,
-        branch: Box<IfDefBranch<'input>>,
-    },
-    Else {
-        line: u32,
-        macro_range: TokenRange,
-        body: Lines<'input>,
-        endif_line: u32,
-        endif_macro_range: TokenRange,
-    },
-    EndIf {
-        line: u32,
-        macro_range: TokenRange,
-    },
+pub struct ProcessConfig<'input> {
+    /// Comment at the end of the ProcessConfig line
+    pub process_config_comment: Option<Comment<'input>>,
+    /// Name of the process
+    pub process_name: VariableStrings<'input>,
+    /// Comments between ProcessConfig line and curly brace
+    //pub prelude_comments: Vec<Comment<'input>>,
+    /// Line number for the opening curly brace
+    pub open_curly_line: u32,
+    /// Line number for the opening curly brace
+    pub open_curly_index: u32,
+    /// Comment after the open curly brace
+    pub open_curly_comment: Option<Comment<'input>>,
+    /// Line number of the closing curly brace
+    pub close_curly_line: u32,
+    /// Line number of the closing curly brace
+    pub close_curly_index: u32,
+    /// Comment after the close curly brace
+    pub close_curly_comment: Option<Comment<'input>>,
+    /// Lines inside of the ProcessConfig block. This should throw an error
+    /// if a ProcessConfig is found inside another ProcessConfig
+    pub body: Lines<'input>,
 }
 
-impl<'input> IfDefBranch<'input> {
-    /// Get start line of the branch.
-    pub fn get_start_line(&self) -> u32 {
-        match self {
-            IfDefBranch::ElseIfDef {
-                line,
-                macro_range: _,
-                condition: _,
-                body: _,
-                branch: _,
-            } => *line,
-            IfDefBranch::Else {
-                line,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => *line,
-            IfDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
-        }
-    }
-
-    /// Get end line of this branch.
-    pub fn get_end_line(&self) -> u32 {
-        match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range: _,
-                condition: _,
-                body: _,
-                branch,
-            } => branch.get_start_line() - 1,
-            IfDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line,
-                endif_macro_range: _,
-            } => *endif_line - 1,
-            // For Endif, the start line and the end line are always the same.
-            IfDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
-        }
-    }
-}
-
-impl<'input> ToString for IfDefBranch<'input> {
+impl<'input> ToString for ProcessConfig<'input> {
     fn to_string(&self) -> String {
-        match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range: _,
-                condition,
-                body: _,
-                branch: _,
-            } => {
-                format!("#elsifdef {}", condition.to_string())
-            }
-            IfDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => "#else".to_string(),
-            IfDefBranch::EndIf {
-                line: _,
-                macro_range: _,
-            } => "#endif".to_string(),
-        }
-    }
-}
-
-vec_wrapper!(IfNotDefClauses, VariableStrings);
-
-#[derive(Debug)]
-pub enum IfNotDefBranch<'input> {
-    Else {
-        line: u32,
-        macro_range: TokenRange,
-        body: Lines<'input>,
-        endif_line: u32,
-        endif_macro_range: TokenRange,
-    },
-    EndIf {
-        line: u32,
-        macro_range: TokenRange,
-    },
-}
-
-impl<'input> IfNotDefBranch<'input> {
-    /// Get the start line of this branch
-    pub fn get_start_line(&self) -> u32 {
-        match self {
-            IfNotDefBranch::Else {
-                line,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => *line,
-            IfNotDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
-        }
-    }
-
-    /// Get the end line of this branch.
-    pub fn get_end_line(&self) -> u32 {
-        match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line,
-                endif_macro_range: _,
-            } => *endif_line - 1,
-            // For EndIf, the start and end lines are always the same.
-            IfNotDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
-        }
-    }
-}
-
-impl<'input> ToString for IfNotDefBranch<'input> {
-    fn to_string(&self) -> String {
-        match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => "#else".to_string(),
-            IfNotDefBranch::EndIf {
-                line: _,
-                macro_range: _,
-            } => "#endif".to_string(),
+        if let Some(comment) = &self.process_config_comment {
+            format!(
+                "ProcessConfig = {} {}",
+                self.process_name.to_string(),
+                comment.to_string()
+            )
+        } else {
+            format!("ProcessConfig = {}", self.process_name.to_string())
         }
     }
 }
 
 #[derive(Debug)]
 pub enum Line<'input> {
-    /// NOTE: Comments are not really supported by NSPlug. We have them here
-    /// because they might be soon.
     Comment {
-        comment: &'input str,
+        comment: Comment<'input>,
         line: u32,
     },
-    Macro {
-        macro_type: MacroType<'input>,
-        comment: Option<&'input str>,
+    Assignment {
+        assignment: Assignment<'input>,
         line: u32,
+    },
+    Define {
+        assignment: Assignment<'input>,
+        line: u32,
+        /// Range of the 'define:' keyword
+        range: TokenRange,
+    },
+    ProcessConfig {
+        process_config: ProcessConfig<'input>,
+        /// Line of the ProcessConfig
+        line: u32,
+        /// Range of the 'ProcessConfig' keyword
+        range: TokenRange,
     },
     Variable {
         variable: Variable<'input>,
@@ -518,21 +243,24 @@ pub enum Line<'input> {
 impl<'input> ToString for Line<'input> {
     fn to_string(&self) -> String {
         match self {
-            Line::Comment { comment, line } => {
-                format!("// {comment}")
-            }
-            Line::Macro {
-                macro_type,
-                comment,
-                line,
+            Line::Comment { comment, line: _ } => comment.to_string(),
+            Line::Assignment {
+                assignment,
+                line: _,
+            } => assignment.to_string(),
+            Line::Define {
+                assignment,
+                line: _,
+                range: _,
             } => {
-                if let Some(comment) = comment {
-                    format!("{} // {comment}", macro_type.to_string())
-                } else {
-                    macro_type.to_string()
-                }
+                format!("define: {}", assignment.to_string())
             }
-            Line::Variable { variable, line } => variable.to_string(),
+            Line::ProcessConfig {
+                process_config,
+                line: _,
+                range: _,
+            } => process_config.to_string(),
+            Line::Variable { variable, line: _ } => variable.to_string(),
             Line::Error(_, _) => "".to_string(),
             Line::EndOfLine => "".to_string(),
         }
@@ -546,10 +274,7 @@ vec_wrapper!(Lines, Line);
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        lexers::TokenRange,
-        moos::lexer::{Lexer, State},
-    };
+    use crate::lexers::TokenRange;
 
     use super::{Value, Values, Variable};
 

@@ -133,6 +133,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                         SemanticTokenType::OPERATOR,
                         SemanticTokenType::TYPE,
                         SemanticTokenType::NAMESPACE,
+                        SemanticTokenType::STRUCT,
                     ],
                     token_modifiers: vec![
                         SemanticTokenModifier::DECLARATION,

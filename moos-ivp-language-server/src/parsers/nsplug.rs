@@ -307,9 +307,7 @@ fn handle_include(
 fn handle_quote(document: &mut Document, line: u32, quote: &Quote) {
     // Insert all of the variables first so they take priority
     quote.content.iter().for_each(|v| match v {
-        nsplug::tree::VariableString::Variable(variable) => {
-            handle_variable(document, line, variable)
-        }
+        nsplug::tree::Value::Variable(variable) => handle_variable(document, line, variable),
         _ => {}
     });
 

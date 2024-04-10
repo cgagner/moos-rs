@@ -25,6 +25,9 @@ use tracing::{debug, error, info, trace, warn};
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
 pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
 
+const DEFINE_KEYWORD: &str = "define:";
+const PROCESS_CONFIG_KEYWORD: &str = "ProcessConfig";
+
 #[derive(Debug, Default, Clone)]
 pub struct State<'input> {
     pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>,
@@ -40,26 +43,13 @@ pub enum Token<'input> {
     Integer(i64, &'input str),
     Float(f64, &'input str),
     ValueString(&'input str),
-    PlugVariable(&'input str),
-    PartialPlugVariable(&'input str),
-    PlugUpperVariable(&'input str),
-    PartialPlugUpperVariable(&'input str),
+    EnvVariable(&'input str),
+    PartialEnvVariable(&'input str),
     DefineKeyword,
-    BlockKeyword(&'input str),
-    // TODO: Need to remove nsplug tokens
-    MacroDefine,
-    MacroInclude,
-    MacroIfDef,
-    MacroIfNotDef,
-    MacroElseIfDef,
-    MacroElse,
-    MacroEndIf,
-    UnknownMacro(&'input str),
-    OrOperator,
-    AndOperator,
-    LeftAngleBracket,
-    RightAngleBracket,
-    Space,
+    ProcessConfigKeyword,
+    AssignmentOp,
+    CurlyOpen,
+    CurlyClose,
     /// End of Line
     EOL,
     /// End of File
@@ -80,8 +70,6 @@ pub struct Lexer<'input> {
     trim_start: bool,
     trim_end: bool,
     token_queue: TokenQueue<'input>,
-    block_keywords: Vec<&'static str>,
-    keywords: Vec<&'static str>,
 }
 
 impl<'input> Lexer<'input> {
@@ -108,8 +96,6 @@ impl<'input> Lexer<'input> {
             trim_start: true,
             trim_end: false,
             token_queue: TokenQueue::new(),
-            block_keywords: vec!["processconfig"],
-            keywords: vec!["define:"], // TODO: The keywords are based on the type of file
         }
     }
 
@@ -235,6 +221,64 @@ impl<'input> Lexer<'input> {
         self.previous_index = self.get_safe_index(i + 1);
     }
 
+    #[inline]
+    fn scan_keywords_and_values(&mut self, line: &'input str, line_index: usize) {
+        // Sanity check that the input is at least 1 characters
+        if line.len() < 1 {
+            return;
+        }
+
+        let (input, line_index) = if self.start_of_line {
+            let line_trim_start = line.trim_start();
+            // First check for 'define:' keyword
+            if line_trim_start.starts_with(DEFINE_KEYWORD) {
+                let index = line
+                    .find(DEFINE_KEYWORD)
+                    .expect("Could not fine index of 'define:'");
+
+                let index_after_define = index + DEFINE_KEYWORD.len();
+                let end_index = line_index + index_after_define;
+                self.push_token(line_index + index, Token::DefineKeyword, end_index);
+                if let Some(i) =
+                    line[index_after_define..].find(|x| x != '\t' && x != ' ' && x != '\r')
+                {
+                    (&line[index_after_define + i..], end_index + i)
+                } else {
+                    // Nothing else to process
+                    return;
+                }
+            } else {
+                // Check for keywords
+                if let Some(first_word) = line.split_whitespace().next() {
+                    trace!(
+                        "First Word: {:?}, {} {}",
+                        first_word,
+                        line_index,
+                        first_word.len()
+                    );
+                    if PROCESS_CONFIG_KEYWORD.eq_ignore_ascii_case(first_word) {
+                        // Handle block keywords
+                        let new_line_index = line_index + first_word.len();
+                        self.push_token(line_index, Token::ProcessConfigKeyword, new_line_index);
+
+                        (&line[first_word.len()..], new_line_index)
+                    } else {
+                        (line, line_index)
+                    }
+                } else {
+                    (line, line_index)
+                }
+            }
+        } else {
+            (line, line_index)
+        };
+
+        // Start of variable not found
+        if !input.is_empty() {
+            self.scan_value(input, line_index);
+        }
+    }
+
     fn scan_value(&mut self, line: &'input str, line_index: usize) {
         if line.is_empty() {
             return;
@@ -273,77 +317,6 @@ impl<'input> Lexer<'input> {
         );
     }
 
-    #[inline]
-    fn scan_keywords_and_values(&mut self, line: &'input str, line_index: usize) {
-        // Sanity check that the input is at least 1 characters
-        if line.len() < 1 {
-            return;
-        }
-        trace!(
-            "Scanning for variables: {:?}, start_of_line: {:?}",
-            line,
-            self.start_of_line
-        );
-
-        let (input, line_index) = if self.start_of_line {
-            let line_trim_start = line.trim_start();
-            if line_trim_start.starts_with("define:") {
-                let index = line
-                    .find("define:")
-                    .expect("Could not fine index of 'define:'");
-
-                let index_after_define = index + "define:".len();
-                let end_index = line_index + index_after_define;
-                self.push_token(line_index + index, Token::DefineKeyword, end_index);
-                if let Some(i) =
-                    line[index_after_define..].find(|x| x != '\t' && x != ' ' && x != '\r')
-                {
-                    (&line[index_after_define + i..], end_index + i)
-                } else {
-                    // Nothing else to process
-                    return;
-                }
-            } else {
-                // Check for keywords
-                if let Some(first_word) = line.split_whitespace().next() {
-                    let first_word_lower = first_word.to_lowercase();
-                    trace!(
-                        "First Word: {:?}, {} {}",
-                        first_word,
-                        line_index,
-                        first_word.len()
-                    );
-                    if self.block_keywords.contains(&first_word_lower.as_str()) {
-                        // Handle block keywords
-                        let new_line_index = line_index + first_word.len();
-                        self.push_token(
-                            line_index,
-                            Token::BlockKeyword(first_word),
-                            new_line_index,
-                        );
-
-                        (&line[first_word.len()..], new_line_index)
-                    } else if self.keywords.contains(&first_word_lower.as_str()) {
-                        // TODO: How do we know have a keyword token
-                        (line, line_index)
-                    } else {
-                        (line, line_index)
-                    }
-                } else {
-                    (line, line_index)
-                }
-            }
-        } else {
-            (line, line_index)
-        };
-
-        // Start of variable not found
-        if !input.is_empty() {
-            trace!("Last string: '{:?}'", input);
-            self.scan_value(input, line_index);
-        }
-    }
-
     fn tokenize_macro(&mut self, i: usize) {
         // If its not the start of the line, it can't be a macro.
         if !self.start_of_line {
@@ -357,9 +330,13 @@ impl<'input> Lexer<'input> {
         }
         // Skip lines that start with #
 
+        // TODO: We should only skip lines that start with known macros
+
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| c == '\n') {
             match c {
                 '\n' => {
+                    // Setting the previous index to drop previous tokens
+                    self.previous_index = self.get_safe_index(i);
                     self.tokenize_new_line(i, false);
                     return;
                 }
@@ -376,11 +353,44 @@ impl<'input> Lexer<'input> {
         self.trim_end = true;
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() && !drop_unhandled {
-                self.scan_value(unhandled, prev_i);
+                self.scan_keywords_and_values(unhandled, prev_i);
             }
         }
         self._handle_new_line(i);
-        // Break out of the tokenize for-loop after each line
+    }
+
+    fn tokenize_assignment_op(&mut self, i: usize) {
+        // Trim up to the assignment op
+        self.trim_end = true;
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+            if !unhandled.is_empty() {
+                self.scan_keywords_and_values(unhandled, prev_i);
+            }
+        }
+        self.token_queue.push_back(Ok((
+            self.get_location(i),
+            Token::AssignmentOp,
+            self.get_location(i),
+        )));
+        self.found_assign_op = true;
+        self.start_of_line = false;
+        self.trim_start = true;
+        self.trim_end = false;
+        self.previous_index = self.get_safe_index(i + 1);
+    }
+
+    fn tokenize_curly_brace(&mut self, i: usize, token: Token<'input>) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+            if !unhandled.is_empty() {
+                self.scan_keywords_and_values(unhandled, prev_i);
+            }
+        }
+        self.token_queue
+            .push_back(Ok((self.get_location(i), token, self.get_location(i))));
+        self.trim_start = true;
+        self.trim_end = false;
+        self.start_of_line = false;
+        self.previous_index = self.get_safe_index(i + 1);
     }
 
     /// Tokenize a quote.
@@ -389,7 +399,7 @@ impl<'input> Lexer<'input> {
     fn tokenize_quote(&mut self, i: usize) -> bool {
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
-                self.scan_value(unhandled, prev_i);
+                self.scan_keywords_and_values(unhandled, prev_i);
                 self.start_of_line = false;
                 self.trim_start = false;
             }
@@ -406,7 +416,7 @@ impl<'input> Lexer<'input> {
                     // Push any unhandled tokens before the QuoteEnd
                     if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii, false) {
                         if !unhandled.is_empty() {
-                            self.scan_value(unhandled, prev_i);
+                            self.scan_keywords_and_values(unhandled, prev_i);
                         }
                     }
                     self.push_token(ii, Token::QuoteEnd, ii + 1);
@@ -415,39 +425,19 @@ impl<'input> Lexer<'input> {
                     return true;
                 }
                 // Handle Variables inside of quotes
-                cc if (cc == '$' && ccc == '(') => {
-                    // TODO: Add Quote Begin
+                cc if (cc == '$' && ccc == '{') => {
                     let found_variable = self.tokenize_variable(
                         ii,
                         cc,
                         ccc,
                         |text: &'input str, is_partial: bool| {
                             if !is_partial {
-                                Token::PlugVariable(text)
+                                Token::EnvVariable(text)
                             } else {
-                                Token::PartialPlugVariable(text)
+                                Token::PartialEnvVariable(text)
                             }
                         },
                     );
-                    if !found_variable {
-                        return false;
-                    }
-                }
-                cc if (cc == '%' && ccc == '(') => {
-                    // TODO: Add Quote Begin
-                    let found_variable = self.tokenize_variable(
-                        ii,
-                        cc,
-                        ccc,
-                        |text: &'input str, is_partial: bool| {
-                            if !is_partial {
-                                Token::PlugUpperVariable(text)
-                            } else {
-                                Token::PartialPlugUpperVariable(text)
-                            }
-                        },
-                    );
-                    // If the variable was not found, return.
                     if !found_variable {
                         return false;
                     }
@@ -456,7 +446,7 @@ impl<'input> Lexer<'input> {
                     // Push any unhandled tokens before the End of line
                     if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii, false) {
                         if !unhandled.is_empty() {
-                            self.scan_value(unhandled, prev_i);
+                            self.scan_keywords_and_values(unhandled, prev_i);
                         }
                     }
 
@@ -471,7 +461,7 @@ impl<'input> Lexer<'input> {
         // Push any unhandled tokens before the end of the file
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), false) {
             if !unhandled.is_empty() {
-                self.scan_value(unhandled, prev_i);
+                self.scan_keywords_and_values(unhandled, prev_i);
             }
         }
         self.previous_index = None;
@@ -483,7 +473,7 @@ impl<'input> Lexer<'input> {
         self.trim_end = true;
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
-                self.scan_value(unhandled, prev_i);
+                self.scan_keywords_and_values(unhandled, prev_i);
                 self.start_of_line = false;
                 self.trim_start = false;
             }
@@ -508,7 +498,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    /// Tokenize a Plug variable
+    /// Tokenize an Env variable
     /// Returns true if a full variable is parsed; false if the end of the line
     /// or end of the file is reached without finding the ending token.
     fn tokenize_variable<F: Fn(&'input str, bool) -> Token<'input>>(
@@ -521,7 +511,7 @@ impl<'input> Lexer<'input> {
         // Check for unhandled strings
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
-                self.scan_value(unhandled, prev_i);
+                self.scan_keywords_and_values(unhandled, prev_i);
                 self.start_of_line = false;
                 self.trim_start = false;
             }
@@ -530,7 +520,7 @@ impl<'input> Lexer<'input> {
 
         while let Some(((ii, cc), (_iii, _ccc))) = self
             .iter
-            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == ')')
+            .find(|&((_ii, cc), (_iii, ccc))| cc == '\n' || cc == '}')
         {
             if cc == '\n' {
                 // Partial Variable
@@ -561,10 +551,13 @@ impl<'input> Lexer<'input> {
     fn tokenize(&mut self) {
         // Tokenize until we find:
         //   1. End of line
-        //   2. Comment // Deprecated. NSPlug does not really support comments
-        //   3. Plug variable
-        //   4. Plug upper variable
-        //   5. Macro
+        //   2. Comment
+        //   3. Env variable
+        //   4. Define Keyword
+        //   5. Process Config Keyword
+        //   6. Open/Close Curly brace
+        //   7. Assignment
+        //   8. # Macro => Skip entire line
         //
         // Ignore other tokens
 
@@ -572,30 +565,38 @@ impl<'input> Lexer<'input> {
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
                 || (c == '/' && cc == '/') // Comment
-                // || (c == '$' && cc == '(') // Plug variable
+                || (c == '$' && cc == '{') // Env variable
+                || (c == '=' && !self.found_assign_op) // Assignment
+                || (c == '"') // Quote
                 || (c == '#') // Macro
+                || ((c == '{' || c == '}') && self.start_of_line) // Open/Close curly
         }) {
             match c {
                 '\n' => {
-                    self.tokenize_new_line(i, true);
+                    self.tokenize_new_line(i, false);
                     found_new_line = true;
                     // Break out of the tokenize for-loop after each line
                     break;
                 }
                 '/' => self.tokenize_comment(i),
-                // c if (c == '$' && cc == '(') => {
-                //     // drop the unhandled tokens before this because we are not
-                //     // on a macro line
-                //     self.drop_unhandled_string(i);
-                //     self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
-                //         if !is_partial {
-                //             Token::PlugVariable(text)
-                //         } else {
-                //             Token::PartialPlugVariable(text)
-                //         }
-                //     });
-                // }
+                c if (c == '$' && cc == '{') => {
+                    self.tokenize_variable(i, c, cc, |text: &'input str, is_partial: bool| {
+                        if !is_partial {
+                            Token::EnvVariable(text)
+                        } else {
+                            Token::PartialEnvVariable(text)
+                        }
+                    });
+                }
+                '=' => self.tokenize_assignment_op(i),
+                '"' => {
+                    if !self.tokenize_quote(i) {
+                        break;
+                    }
+                }
                 '#' => self.tokenize_macro(i),
+                '{' => self.tokenize_curly_brace(i, Token::CurlyOpen),
+                '}' => self.tokenize_curly_brace(i, Token::CurlyClose),
                 _ => {}
             }
         }

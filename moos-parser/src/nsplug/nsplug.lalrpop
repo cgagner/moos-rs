@@ -99,8 +99,8 @@ UnknownMacro: Line<'input> = {
 }
 
 Variable: tree::Variable<'input> = {
-    <l:@L> <text:"PlugVariable"> <r:@R> => tree::Variable::Regular{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
-    <l:@L> <text:"PlugUpperVariable"> <r:@R> => tree::Variable::Upper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
+    <l:@L> <text:"PlugVariable"> <r:@R> => tree::Variable::Regular{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `PlugVariable`")},
+    <l:@L> <text:"PlugUpperVariable"> <r:@R> => tree::Variable::Upper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `PlugUpperVariable`")},
     <l:@L> <text:"PartialPlugVariable"> <r:@R> => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
@@ -109,9 +109,18 @@ Variable: tree::Variable<'input> = {
                 dropped_tokens: vec![]
             };
         state.errors.push(e);
-        tree::Variable::Partial{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")}
+        tree::Variable::Partial{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `PartialPlugVariable`")}
     },
-    <l:@L> <text:"PartialPlugUpperVariable"> <r:@R> => tree::Variable::PartialUpper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")},
+    <l:@L> <text:"PartialPlugUpperVariable"> <r:@R> => {
+            let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    error: PlugParseError::new_missing_trailing(')', l, r)
+                },
+                dropped_tokens: vec![]
+            };
+        state.errors.push(e);
+        tree::Variable::PartialUpper{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `PartialPlugUpperVariable`")}
+    },
 }
 
 Value: tree::Value<'input> = {
@@ -133,7 +142,7 @@ VariableStrings: tree::VariableStrings<'input> = {
 }
 
 Quote: tree::Quote<'input> = {
-    <l:@L> QuoteBegin <content: VariableString*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
+    <l:@L> QuoteBegin <content: Value*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
 }
 
 IncludePath: tree::IncludePath<'input> = {

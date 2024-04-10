@@ -227,17 +227,11 @@ mod token_map {
                                         }
                                     }
                                     _ => {
-                                        // Should never get here
-                                        panic!(
-                                            "TokenMap reached unexpected condition while inserting"
-                                        );
                                         break;
                                     }
                                 }
                             }
                             _ => {
-                                // Should never get here
-                                panic!("TokenMap reached unexpected condition while inserting");
                                 break;
                             }
                         }

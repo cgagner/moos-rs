@@ -7,10 +7,11 @@ pub mod lexers;
 pub mod moos;
 pub mod nsplug;
 
-use lalrpop_util::ErrorRecovery;
+#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
+pub type MoosParser = moos::moos::LinesParser;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
-pub type LinesParser = moos::moos::LinesParser;
+pub type MoosLexer<'input> = moos::lexer::Lexer<'input>;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugLexer<'input> = nsplug::lexer::Lexer<'input>;
@@ -28,8 +29,6 @@ mod tests {
 
     #[test]
     fn test_plug_parser() -> anyhow::Result<()> {
-        use crate::PlugParser;
-
         use tracing::level_filters::LevelFilter;
         use tracing_subscriber::fmt::writer::BoxMakeWriter;
         use tracing_subscriber::prelude::*;
