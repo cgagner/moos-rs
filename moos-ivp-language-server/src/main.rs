@@ -1,20 +1,19 @@
 /*
  * Parsers:
- *  - [ ] NSPlug
- *  - [ ] MOOS Missions
+ *  - [X] NSPlug
+ *  - [X] MOOS Missions
  *  - [ ] IvP Behavior files
  *  - [ ] MOOS-IvP Emacs settings for keywords
  *  - [ ] Create new file format for Behavior and MOOS app variables with description
  *  - [ ] MOOS-IvP Manifests
- *  - [ ] Create method for converting between Parser Range and LSP Range.
  *
  * Desired Language Features:
  *  - [ ] Parse Workspace Configuration
- *  - [ ] Semantic Tokens
- *  - [ ] Diagnostics
+ *  - [X] Semantic Tokens
+ *  - [X] Diagnostics
  *  - [ ] Code Actions
  *  - [ ] Go to Definitions
- *  - [ ] Document links
+ *  - [X] Document links
  *  - [ ] Completion Suggestions
  *  - [ ] Hover
  *    - [ ] Show values of variables
@@ -25,6 +24,7 @@
  *    - [ ] Mission files
  *    - [ ] Behavior files
  *    - [ ] Left justified, left justified aligned equals, right justified
+ *  - [X] Inlay Hints
  *  - [ ] Tracing via setTrace
  *
  * TODO:

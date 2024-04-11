@@ -302,7 +302,8 @@ impl Handler {
         params: DidOpenTextDocumentParams,
     ) -> anyhow::Result<()> {
         let uri = &params.text_document.uri;
-        info!("Document Opened: {uri}");
+        let language_id = &params.text_document.language_id;
+        info!("Document Opened: {uri} {language_id}");
 
         if let Ok(cache) = &mut self.cache.lock() {
             let document = cache.insert(&uri, params.text_document.text);

@@ -1,15 +1,3 @@
-// TODO: Need to handle partial variable inside of partial quotes.
-// This is a bit trickier because we need to push the tokens into the queue
-// in the correct order so they appear in the parser correctly. However,
-// The token listener needs these tokens in the opposite order.
-// E.G.
-//
-// TODO: Variables cannot contain spaces. This is because of the way the
-// #define macro is handled.
-//
-// The token listener approach is flawed. It does not take semantics into
-// account.
-
 use super::error::PlugParseError;
 use crate::lexers::{scan_bool, scan_float, scan_integer, Location};
 

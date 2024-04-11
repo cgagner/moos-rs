@@ -7,7 +7,6 @@ use lsp_types::{
 use moos_parser::lexers::TokenMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use tracing::{debug, error, info, trace, warn};
 
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
 pub struct SemanticTokenInfo {
@@ -124,14 +123,52 @@ impl core::ops::BitOr<TokenModifiers> for u32 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-enum FileType {
+pub enum FileType {
     MoosMission,
+    PlugMoosMission,
     Behavior,
+    PlugBehavior,
     Plug,
     Script,
     Manifest,
     #[default]
     Other,
+}
+
+impl FileType {
+    pub fn from_uri(uri: &Url) -> Self {
+        if let Ok(path) = uri.to_file_path() {
+            let filename = path.file_name().unwrap_or_default().to_str().unwrap_or("");
+            return Self::from_filename(filename);
+        } else {
+            return Self::Other;
+        }
+    }
+
+    pub fn from_filename(filename: &str) -> Self {
+        let filename = filename.to_ascii_lowercase();
+
+        let extension = std::path::Path::new(filename.as_str())
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("");
+
+        if filename.starts_with("plug_") || filename.starts_with("meta_") {
+            match extension {
+                "moos" | "moos++" => return Self::PlugMoosMission,
+                "bhv" | "bhv++" => return Self::PlugBehavior,
+                _ => return Self::Plug,
+            }
+        }
+        match extension {
+            "moos" | "moos++" => return Self::MoosMission,
+            "bhv" | "bhv++" => return Self::Behavior,
+            "plug" | "def" => return Self::Plug,
+            "bash" | "sh" | "zsh" => return Self::Script,
+            "mfs" | "gfs" => return Self::Manifest,
+            _ => return Self::Other,
+        }
+    }
 }
 
 enum ReferenceType {
@@ -187,10 +224,11 @@ pub struct Document {
 
 impl Document {
     pub fn new(uri: Url, text: String) -> Self {
+        let file_type = FileType::from_uri(&uri);
         Self {
             uri,
             text: Arc::new(text),
-            file_type: FileType::Other,
+            file_type,
             semantic_tokens: TokenMap::new(),
             diagnostics: Vec::new(),
             folding_ranges: Vec::new(),
@@ -202,9 +240,24 @@ impl Document {
     pub fn refresh(&mut self) {
         self.clear();
 
-        // TODO: Check File Type
-        nsplug::parse(self);
-        moos::parse(self);
+        // Always parser the nsplug first
+        match self.file_type {
+            FileType::PlugMoosMission | FileType::PlugBehavior | FileType::Plug => {
+                nsplug::parse(self)
+            }
+            _ => {}
+        }
+
+        match self.file_type {
+            FileType::MoosMission | FileType::PlugMoosMission => moos::parse(self),
+            FileType::Behavior | FileType::PlugBehavior => {
+                // TODO: Add Behavior parser
+            }
+            FileType::Plug => {}
+            FileType::Script => {}
+            FileType::Manifest => {}
+            FileType::Other => {}
+        }
     }
 
     pub fn clear(&mut self) {

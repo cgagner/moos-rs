@@ -20,25 +20,6 @@ pub Line: Line<'input> = {
     ProcessConfig => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
-        match &error.error {
-            lalrpop_util::ParseError::UnrecognizedEOF { location, expected } => {
-                if expected.contains(&"\"#endif\"".to_string()) {
-                    let endl = if l.line < r.line {
-                        Location::new(l.line + 1, 0)
-                    } else {
-                        r
-                    };
-                    let new_error = lalrpop_util::ErrorRecovery { 
-                        error: lalrpop_util::ParseError::User {
-                            error: MoosParseError::new_missing_endif(l, endl)
-                        },
-                        dropped_tokens: vec![]
-                    };
-                    state.errors.push(new_error);
-                }
-            }
-            _ => {}
-        }
         state.errors.push(error); 
         Line::Error(l.line, r.line)
     },
@@ -104,25 +85,6 @@ ProcessConfigLine: Line<'input> = {
     Define => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
-        match &error.error {
-            lalrpop_util::ParseError::UnrecognizedEOF { location, expected } => {
-                if expected.contains(&"\"#endif\"".to_string()) {
-                    let endl = if l.line < r.line {
-                        Location::new(l.line + 1, 0)
-                    } else {
-                        r
-                    };
-                    let new_error = lalrpop_util::ErrorRecovery { 
-                        error: lalrpop_util::ParseError::User {
-                            error: MoosParseError::new_missing_endif(l, endl)
-                        },
-                        dropped_tokens: vec![]
-                    };
-                    state.errors.push(new_error);
-                }
-            }
-            _ => {}
-        }
         state.errors.push(error); 
         Line::Error(l.line, r.line)
     },
