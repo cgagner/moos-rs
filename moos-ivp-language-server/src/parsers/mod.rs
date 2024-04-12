@@ -1,7 +1,8 @@
-use lsp_types::Url;
-
 pub mod moos;
 pub mod nsplug;
+
+use lsp_types::{Diagnostic, DiagnosticSeverity, Url};
+use moos_parser::lexers::Location;
 
 /// Find a file relative to a parent URL.
 ///
@@ -25,4 +26,33 @@ fn find_relative_file(parent_url: &Url, file_name: &str) -> Option<Url> {
     }
 
     return None;
+}
+
+pub fn new_diagnostic(
+    severity: DiagnosticSeverity,
+    start: &Location,
+    end: &Location,
+    message: String,
+) -> Diagnostic {
+    Diagnostic::new(
+        lsp_types::Range {
+            start: (*start).into(),
+            end: (*end).into(),
+        },
+        Some(severity),
+        None,
+        None,
+        message,
+        None,
+        None,
+    )
+}
+
+/// Helper method to create an error Diagnostic
+fn new_error_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
+    new_diagnostic(DiagnosticSeverity::ERROR, start, end, message)
+}
+
+fn new_warning_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
+    new_diagnostic(DiagnosticSeverity::WARNING, start, end, message)
 }

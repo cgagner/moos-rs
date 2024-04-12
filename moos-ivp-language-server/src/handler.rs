@@ -11,14 +11,14 @@ use lsp_types::{
         DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
     },
     request::{
-        Completion, DocumentLinkRequest, FoldingRangeRequest, GotoDefinition, InlayHintRequest,
-        InlineValueRequest, SemanticTokensFullRequest,
+        Completion, DocumentLinkRequest, FoldingRangeRequest, Formatting, GotoDefinition,
+        InlayHintRequest, InlineValueRequest, SemanticTokensFullRequest,
     },
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentLink, DocumentLinkParams,
-    FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams, InlayHint,
-    InlayHintParams, OneOf, PublishDiagnosticsParams, SemanticTokens, SemanticTokensParams,
-    SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams, DocumentLink,
+    DocumentLinkParams, FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams,
+    InlayHint, InlayHintParams, OneOf, PublishDiagnosticsParams, SemanticTokens,
+    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
 
 use crate::{cache::Project, workspace};
@@ -35,6 +35,7 @@ enum MyRequests {
     Completion,
     DocumentLinkRequest,
     FoldingRangeRequest,
+    Formatting,
     GotoDefinition,
     InlayHintRequest,
     InlineValueRequest,
@@ -49,13 +50,13 @@ enum MyNotifications {
     DidChangeConfiguration,
 }
 
-pub struct Handler {
-    cache: Arc<Mutex<Project>>,
+pub struct Handler<'a> {
+    cache: Arc<Mutex<Project<'a>>>,
     connection: Connection,
     params: InitializeParams,
 }
 
-impl Handler {
+impl<'a> Handler<'a> {
     pub fn new(connection: Connection, params: InitializeParams) -> Self {
         let root = params.root_path.clone().unwrap_or_default();
 
@@ -171,6 +172,17 @@ impl Handler {
                 };
                 return Some(response);
             }
+            Formatting(id, params) => {
+                mlog!("Got Formatting Request: {id} {params:?}");
+                let result = self.handle_document_formatting(&id, params);
+                let result = serde_json::to_value(&result).unwrap();
+                let response = Response {
+                    id,
+                    result: Some(result),
+                    error: None,
+                };
+                return Some(response);
+            }
             Unhandled(req) => info!("Unhandled Request {:?}", req.method),
             Error { method, error } => {
                 error!("Failed to handle Request {method}: {error:?}")
@@ -273,6 +285,22 @@ impl Handler {
                 return None;
             }
         }
+        return None;
+    }
+
+    fn handle_document_formatting(
+        &mut self,
+        id: &RequestId,
+        params: DocumentFormattingParams,
+    ) -> Option<Vec<TextEdit>> {
+        let uri = params.text_document.uri;
+
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                return doc.get_formats(&params.options);
+            }
+        }
+
         return None;
     }
 

@@ -1,5 +1,6 @@
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
+use crate::TreeNode;
 
 #[derive(Debug)]
 pub enum Value<'input> {
@@ -9,6 +10,35 @@ pub enum Value<'input> {
     String(&'input str, TokenRange),
     Quote(Quote<'input>),
     Variable(Variable<'input>),
+}
+
+impl<'input> Value<'input> {
+    /// Get the range in the line for the value
+    #[inline]
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            Value::Boolean(_, _, range) => range,
+            Value::Integer(_, _, range) => range,
+            Value::Float(_, _, range) => range,
+            Value::String(_, range) => range,
+            Value::Quote(quote) => quote.get_token_range(),
+            Value::Variable(variable) => variable.get_token_range(),
+        }
+    }
+}
+
+impl<'input> TreeNode for Value<'input> {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
 }
 
 impl<'input> ToString for Value<'input> {
@@ -63,6 +93,39 @@ pub enum Variable<'input> {
         range: TokenRange,
     },
 }
+
+impl<'input> Variable<'input> {
+    pub fn get_text(&self) -> &str {
+        match self {
+            Variable::Regular { text, range: _ }
+            | Variable::Upper { text, range: _ }
+            | Variable::Partial { text, range: _ }
+            | Variable::PartialUpper { text, range: _ } => text,
+        }
+    }
+
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            Variable::Regular { text: _, range }
+            | Variable::Upper { text: _, range }
+            | Variable::Partial { text: _, range }
+            | Variable::PartialUpper { text: _, range } => range,
+        }
+    }
+}
+
+impl<'input> TreeNode for Variable<'input> {
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
 impl<'input> ToString for Variable<'input> {
     fn to_string(&self) -> String {
         match self {
@@ -96,6 +159,29 @@ impl<'input> VariableString<'input> {
             VariableString::Variable(_) => true,
         }
     }
+
+    /// Get the range of the VariableString in the line
+    #[inline]
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            VariableString::String(_, range) => range,
+            VariableString::Variable(variable) => variable.get_token_range(),
+        }
+    }
+}
+
+impl<'input> TreeNode for VariableString<'input> {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
 }
 
 impl<'input> ToString for VariableString<'input> {
@@ -127,10 +213,48 @@ impl<'input> TryFrom<VariableString<'input>> for Variable<'input> {
 
 vec_wrapper!(VariableStrings, VariableString);
 
+impl<'input> TreeNode for VariableStrings<'input> {
+    fn get_start_index(&self) -> u32 {
+        if let Some(v) = self.0.first() {
+            v.get_start_index()
+        } else {
+            0
+        }
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(v) = self.0.last() {
+            v.get_end_index()
+        } else {
+            0
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Quote<'input> {
     pub content: Values<'input>,
     pub range: TokenRange,
+}
+
+impl<'input> Quote<'input> {
+    fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl<'input> TreeNode for Quote<'input> {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.range.start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.range.end
+    }
 }
 
 impl<'input> ToString for Quote<'input> {
@@ -146,17 +270,59 @@ impl<'input> From<Quote<'input>> for Value<'input> {
 }
 
 #[derive(Debug)]
+pub struct Comment<'input> {
+    pub text: &'input str,
+    pub range: TokenRange,
+}
+
+impl<'input> Comment<'input> {
+    /// Get the range in the line for the Comment
+    #[inline]
+    pub fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl<'input> TreeNode for Comment<'input> {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
+impl<'input> ToString for Comment<'input> {
+    fn to_string(&self) -> String {
+        format!("// {}", self.text)
+    }
+}
+
+#[derive(Debug)]
 pub enum IncludePath<'input> {
     VariableStrings(VariableStrings<'input>, TokenRange),
     Quote(Quote<'input>),
 }
 
 impl<'input> IncludePath<'input> {
-    pub fn get_range(&self) -> &TokenRange {
+    /// Get the range in the line for the IncludePath
+    #[inline]
+    pub fn get_token_range(&self) -> &TokenRange {
         match self {
             IncludePath::VariableStrings(_, range) => range,
-            IncludePath::Quote(quote) => &quote.range,
+            IncludePath::Quote(quote) => quote.get_token_range(),
         }
+    }
+}
+
+impl<'input> TreeNode for IncludePath<'input> {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
     }
 }
 
@@ -186,6 +352,22 @@ pub struct IncludeTag<'input> {
 impl<'input> IncludeTag<'input> {
     pub fn new(tag: &'input str, range: TokenRange) -> Self {
         Self { tag, range }
+    }
+
+    /// Get the range in the line for the Include Tag
+    #[inline]
+    fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl<'input> TreeNode for IncludeTag<'input> {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
     }
 }
 
@@ -223,6 +405,115 @@ pub enum MacroType<'input> {
         /// Range of the "#ifndef"
         range: TokenRange,
     },
+}
+
+impl<'input> MacroType<'input> {
+    /// Get the TokenRange for the Macro keyword.
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            MacroType::Define {
+                definition: _,
+                range,
+            }
+            | MacroType::Include {
+                path: _,
+                tag: _,
+                range,
+            }
+            | MacroType::IfDef {
+                condition: _,
+                branch: _,
+                body: _,
+                range,
+            }
+            | MacroType::IfNotDef {
+                clauses: _,
+                branch: _,
+                body: _,
+                range,
+            } => range,
+        }
+    }
+
+    #[cfg(feature = "lsp-types")]
+    /// Create TextEdits for the macros. This should only manipulate the
+    /// whitespace in the line.
+    pub fn format(
+        &self,
+        line: u32,
+        line_end_index: u32,
+        format_options: &FormatOptions,
+        level: u32,
+    ) -> Vec<lsp_types::TextEdit> {
+        use lsp_types::Position;
+
+        let mut lines = Vec::new();
+
+        /// TODO: Need to figure out how to handle tabs
+        let start_index = format_options.tab_size * level;
+
+        let new_text = self.to_string();
+
+        if start_index != self.get_start_index()
+            || (start_index + new_text.len() as u32) != line_end_index
+        {
+            tracing::info!("Formatting line({line}): '{new_text}'");
+            lines.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line,
+                        character: start_index,
+                    },
+                    end: lsp_types::Position {
+                        line: line,
+                        character: line_end_index,
+                    },
+                },
+                new_text,
+            });
+        }
+
+        /// TODO: Need to handle formats recursively
+        return lines;
+    }
+}
+
+impl<'input> TreeNode for MacroType<'input> {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        match self {
+            MacroType::Define {
+                definition,
+                range: _,
+            } => definition.get_end_index(),
+            MacroType::Include {
+                path,
+                tag,
+                range: _,
+            } => {
+                if let Some(tag) = tag {
+                    tag.get_end_index()
+                } else {
+                    path.get_end_index()
+                }
+            }
+            MacroType::IfDef {
+                condition,
+                branch: _,
+                body: _,
+                range: _,
+            } => condition.get_end_index(),
+            MacroType::IfNotDef {
+                clauses,
+                branch: _,
+                body: _,
+                range: _,
+            } => clauses.get_end_index(),
+        }
+    }
 }
 
 impl<'input> ToString for MacroType<'input> {
@@ -282,9 +573,35 @@ impl<'input> MacroDefinition<'input> {
     }
 }
 
+impl<'input> TreeNode for MacroDefinition<'input> {
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        if let Some(v) = self.name.first() {
+            v.get_start_index()
+        } else {
+            0
+        }
+    }
+
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        if let Some(v) = self.value.last() {
+            v.get_end_index()
+        } else if let Some(v) = self.name.first() {
+            v.get_end_index()
+        } else {
+            0
+        }
+    }
+}
+
 impl<'input> ToString for MacroDefinition<'input> {
     fn to_string(&self) -> String {
-        return format!("{} {}", self.name.to_string(), self.value.to_string());
+        if self.value.is_empty() {
+            return format!("{}", self.name.to_string());
+        } else {
+            return format!("{} {}", self.name.to_string(), self.value.to_string());
+        }
     }
 }
 
@@ -304,6 +621,42 @@ pub enum MacroCondition<'input> {
         lhs: MacroDefinition<'input>,
         rhs: Box<MacroCondition<'input>>,
     },
+}
+
+impl<'input> TreeNode for MacroCondition<'input> {
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        match self {
+            MacroCondition::Simple(def) => def.get_start_index(),
+            MacroCondition::Disjunction {
+                operator_range: _,
+                lhs,
+                rhs: _,
+            } => lhs.get_start_index(),
+            MacroCondition::Conjunction {
+                operator_range: _,
+                lhs,
+                rhs: _,
+            } => lhs.get_start_index(),
+        }
+    }
+
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        match self {
+            MacroCondition::Simple(def) => def.get_end_index(),
+            MacroCondition::Disjunction {
+                operator_range: _,
+                lhs: _,
+                rhs,
+            } => rhs.get_end_index(),
+            MacroCondition::Conjunction {
+                operator_range: _,
+                lhs: _,
+                rhs,
+            } => rhs.get_end_index(),
+        }
+    }
 }
 
 impl<'input> ToString for MacroCondition<'input> {
@@ -397,6 +750,54 @@ impl<'input> IfDefBranch<'input> {
     }
 }
 
+impl<'input> TreeNode for IfDefBranch<'input> {
+    fn get_start_index(&self) -> u32 {
+        match self {
+            IfDefBranch::ElseIfDef {
+                line: _,
+                macro_range,
+                condition: _,
+                body: _,
+                branch: _,
+            } => macro_range.start,
+            IfDefBranch::Else {
+                line: _,
+                macro_range,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => macro_range.start,
+            IfDefBranch::EndIf {
+                line: _,
+                macro_range,
+            } => macro_range.start,
+        }
+    }
+
+    fn get_end_index(&self) -> u32 {
+        match self {
+            IfDefBranch::ElseIfDef {
+                line: _,
+                macro_range: _,
+                condition,
+                body: _,
+                branch: _,
+            } => condition.get_end_index(),
+            IfDefBranch::Else {
+                line: _,
+                macro_range,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => macro_range.end,
+            IfDefBranch::EndIf {
+                line: _,
+                macro_range,
+            } => macro_range.end,
+        }
+    }
+}
+
 impl<'input> ToString for IfDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
@@ -425,6 +826,24 @@ impl<'input> ToString for IfDefBranch<'input> {
 }
 
 vec_wrapper!(IfNotDefClauses, VariableStrings);
+
+impl<'input> TreeNode for IfNotDefClauses<'input> {
+    fn get_start_index(&self) -> u32 {
+        if let Some(v) = self.0.first() {
+            v.get_start_index()
+        } else {
+            0
+        }
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(v) = self.0.last() {
+            v.get_end_index()
+        } else {
+            0
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum IfNotDefBranch<'input> {
@@ -478,6 +897,40 @@ impl<'input> IfNotDefBranch<'input> {
     }
 }
 
+impl<'input> TreeNode for IfNotDefBranch<'input> {
+    fn get_start_index(&self) -> u32 {
+        match self {
+            IfNotDefBranch::Else {
+                line: _,
+                macro_range,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => macro_range.start,
+            IfNotDefBranch::EndIf {
+                line: _,
+                macro_range,
+            } => macro_range.start,
+        }
+    }
+
+    fn get_end_index(&self) -> u32 {
+        match self {
+            IfNotDefBranch::Else {
+                line: _,
+                macro_range,
+                body: _,
+                endif_line: _,
+                endif_macro_range: _,
+            } => macro_range.end,
+            IfNotDefBranch::EndIf {
+                line: _,
+                macro_range,
+            } => macro_range.end,
+        }
+    }
+}
+
 impl<'input> ToString for IfNotDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
@@ -501,42 +954,121 @@ pub enum Line<'input> {
     /// NOTE: Comments are not really supported by NSPlug. We have them here
     /// because they might be soon.
     Comment {
-        comment: &'input str,
+        comment: Comment<'input>,
         line: u32,
+        line_end_index: u32,
     },
     Macro {
         macro_type: MacroType<'input>,
-        comment: Option<&'input str>,
+        comment: Option<Comment<'input>>,
         line: u32,
+        line_end_index: u32,
     },
     Variable {
         variable: Variable<'input>,
         line: u32,
     },
-    Error(u32, u32),
-    EndOfLine,
+    Error {
+        start_line: u32,
+        end_line: u32,
+    },
+    EndOfLine {
+        line: u32,
+        index: u32,
+    },
+}
+
+pub struct FormatOptions {
+    pub insert_spaces: bool,
+    pub tab_size: u32,
+}
+
+#[cfg(feature = "lsp-types")]
+impl From<lsp_types::FormattingOptions> for FormatOptions {
+    fn from(value: lsp_types::FormattingOptions) -> Self {
+        FormatOptions {
+            insert_spaces: value.insert_spaces,
+            tab_size: value.tab_size,
+        }
+    }
+}
+
+#[cfg(feature = "lsp-types")]
+impl From<&lsp_types::FormattingOptions> for FormatOptions {
+    fn from(value: &lsp_types::FormattingOptions) -> Self {
+        FormatOptions {
+            insert_spaces: value.insert_spaces,
+            tab_size: value.tab_size,
+        }
+    }
+}
+
+impl<'input> Line<'input> {
+    pub fn get_line_number(&self) -> u32 {
+        match self {
+            Line::Comment {
+                comment: _,
+                line,
+                line_end_index: _,
+            } => *line,
+            Line::Macro {
+                macro_type: _,
+                comment: _,
+                line,
+                line_end_index: _,
+            } => *line,
+            Line::Variable { variable: _, line } => *line,
+            Line::Error {
+                start_line,
+                end_line: _,
+            } => *start_line,
+            Line::EndOfLine { line, index: _ } => *line,
+        }
+    }
+
+    #[cfg(feature = "lsp-types")]
+    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+        match self {
+            Line::Macro {
+                macro_type,
+                comment: _,
+                line,
+                line_end_index,
+            } => {
+                // TODO: Handle comments, though they are note really supported
+                return macro_type.format(*line, *line_end_index, format_options, level);
+            }
+            _ => return Vec::new(),
+        }
+    }
 }
 
 impl<'input> ToString for Line<'input> {
     fn to_string(&self) -> String {
         match self {
-            Line::Comment { comment, line: _ } => {
-                format!("// {comment}")
-            }
+            Line::Comment {
+                comment,
+                line: _,
+                line_end_index: _,
+            } => comment.to_string(),
             Line::Macro {
                 macro_type,
                 comment,
                 line: _,
+                line_end_index: _,
             } => {
                 if let Some(comment) = comment {
-                    format!("{} // {comment}", macro_type.to_string())
+                    format!("{} {}", macro_type.to_string(), comment.to_string())
                 } else {
                     macro_type.to_string()
                 }
             }
             Line::Variable { variable, line: _ } => variable.to_string(),
-            Line::Error(_, _) => "".to_string(),
-            Line::EndOfLine => "".to_string(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => "".to_string(),
+            Line::EndOfLine { line: _, index: _ } => "".to_string(),
         }
     }
 }

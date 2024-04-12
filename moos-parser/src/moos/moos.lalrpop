@@ -13,7 +13,7 @@ pub Lines: tree::Lines<'input> = {
 }
 
 pub Line: Line<'input> = {
-    "EOL" => Line::EndOfLine,
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     <l:@L> <assignment:Assignment> => Line::Assignment{assignment, line: l.line},
     Define => <>,
@@ -21,7 +21,7 @@ pub Line: Line<'input> = {
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
-        Line::Error(l.line, r.line)
+        Line::Error{start_line: l.line, end_line: r.line}
     },
 }
 
@@ -74,19 +74,19 @@ Define: Line<'input> = {
 }
 
 CommentOrEmptyLine: Line<'input> = {
-    "EOL" => Line::EndOfLine,
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
 }
 
 ProcessConfigLine: Line<'input> = {
-    "EOL" => Line::EndOfLine,
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     <l:@L> <assignment:Assignment> => Line::Assignment{assignment, line: l.line},
     Define => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
-        Line::Error(l.line, r.line)
+        Line::Error{start_line: l.line, end_line: r.line}
     },
 }
 

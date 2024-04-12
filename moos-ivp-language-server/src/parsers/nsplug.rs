@@ -1,7 +1,7 @@
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, InlayHint, InlayHintKind,
-    InlayHintLabel, Position,
+    InlayHintLabel, Position, TextEdit,
 };
 use moos_parser::{
     lexers::{self, Location, TokenMap, TokenRange},
@@ -10,43 +10,38 @@ use moos_parser::{
         error::{PlugParseError, PlugParseErrorKind},
         lexer::{State, Token},
         tree::{
-            IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines, MacroCondition,
-            MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings,
+            FormatOptions, IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines,
+            MacroCondition, MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings,
         },
     },
     ParseError, PlugParser,
 };
 use tracing::{debug, error, info, trace, warn};
 
-use super::find_relative_file;
+use super::{find_relative_file, new_error_diagnostic};
 
-pub fn new_diagnostic(
-    severity: DiagnosticSeverity,
-    start: &Location,
-    end: &Location,
-    message: String,
-) -> Diagnostic {
-    Diagnostic::new(
-        lsp_types::Range {
-            start: (*start).into(),
-            end: (*end).into(),
-        },
-        Some(severity),
-        None,
-        None,
-        message,
-        None,
-        None,
-    )
-}
+pub fn format(document: &Document, format_options: &FormatOptions) -> Option<Vec<TextEdit>> {
+    // TODO: THis should not have to re-parse the document, but I am fighting
+    // with the borrow checker. Problem for another day.
+    let text = document.text.clone();
+    let lexer = moos_parser::nsplug::lexer::Lexer::new(text.as_str());
+    let mut state = moos_parser::nsplug::lexer::State::default();
+    let result = PlugParser::new().parse(&mut state, text.as_str(), lexer);
 
-/// Helper method to create an error Diagnostic
-pub fn new_error_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::ERROR, start, end, message)
-}
+    if let Ok(lines) = result {
+        if !lines.is_empty() {
+            let edits: Vec<TextEdit> = lines
+                .iter()
+                .map(|line| line.format(&format_options, 0))
+                .flatten()
+                .collect();
+            if !edits.is_empty() {
+                return Some(edits);
+            }
+        }
+    }
 
-pub fn new_warning_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::WARNING, start, end, message)
+    return None;
 }
 
 pub fn parse(document: &mut Document) {
@@ -147,8 +142,9 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
         match l {
             Macro {
                 macro_type,
-                comment,
+                comment: _,
                 line,
+                line_end_index: _,
             } => {
                 let line = *line;
                 match macro_type {
@@ -262,7 +258,7 @@ fn handle_include(
     // TODO: This should really use the workspace, but for now we'll just
     // handle this using the local file system.
     if let Some(include_url) = find_relative_file(&document.uri, path.to_string().as_str()) {
-        let include_range = path.get_range();
+        let include_range = path.get_token_range();
         document.document_links.push(DocumentLink {
             range: lsp_types::Range {
                 start: Position {

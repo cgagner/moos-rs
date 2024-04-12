@@ -236,8 +236,42 @@ pub enum Line<'input> {
         variable: Variable<'input>,
         line: u32,
     },
-    Error(u32, u32),
-    EndOfLine,
+    Error {
+        start_line: u32,
+        end_line: u32,
+    },
+    EndOfLine {
+        line: u32,
+        index: u32,
+    },
+}
+
+impl<'input> Line<'input> {
+    pub fn get_line_number(&self) -> u32 {
+        match self {
+            Line::Comment { comment: _, line } => *line,
+            Line::Assignment {
+                assignment: _,
+                line,
+            } => *line,
+            Line::Define {
+                assignment: _,
+                line,
+                range: _,
+            } => *line,
+            Line::ProcessConfig {
+                process_config: _,
+                line,
+                range: _,
+            } => *line,
+            Line::Variable { variable: _, line } => *line,
+            Line::Error {
+                start_line,
+                end_line: _,
+            } => *start_line,
+            Line::EndOfLine { line, index: _ } => *line,
+        }
+    }
 }
 
 impl<'input> ToString for Line<'input> {
@@ -261,8 +295,11 @@ impl<'input> ToString for Line<'input> {
                 range: _,
             } => process_config.to_string(),
             Line::Variable { variable, line: _ } => variable.to_string(),
-            Line::Error(_, _) => "".to_string(),
-            Line::EndOfLine => "".to_string(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => "".to_string(),
+            Line::EndOfLine { line: _, index: _ } => "".to_string(),
         }
     }
 }

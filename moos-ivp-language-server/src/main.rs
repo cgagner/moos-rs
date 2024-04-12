@@ -159,6 +159,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             resolve_provider: Some(false),
             work_done_progress_options: WorkDoneProgressOptions::default(),
         }),
+        document_formatting_provider: Some(OneOf::Left(true)),
         ..Default::default()
     };
 

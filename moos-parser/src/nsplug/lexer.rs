@@ -218,7 +218,6 @@ impl<'input> Lexer<'input> {
         if line.is_empty() {
             return;
         }
-        self.trim_start = false;
 
         if self.found_assign_op {
             if let Ok(value) = scan_integer(line) {
@@ -258,17 +257,19 @@ impl<'input> Lexer<'input> {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
-            self.previous_index = self.get_safe_index(i + 2);
         }
-
         self.push_token(i, Token::OrOperator, i + 2);
+        self.previous_index = self.get_safe_index(i + 2);
 
         // Consume tokens until the next token is a non-white space or we reach
         // the end of the file
-        while let Some(((_current_i, _current_c), (_next_i, next_c))) = tokens {
+        while let Some(((current_i, _current_c), (_next_i, next_c))) = tokens {
             match next_c {
                 ' ' | '\t' => tokens = self.iter.next(),
-                _ => break,
+                _ => {
+                    self.previous_index = self.get_safe_index(current_i);
+                    break;
+                }
             }
         }
     }
@@ -279,17 +280,20 @@ impl<'input> Lexer<'input> {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
-            self.previous_index = self.get_safe_index(i + 2);
         }
 
         self.push_token(i, Token::AndOperator, i + 2);
+        self.previous_index = self.get_safe_index(i + 2);
 
         // Consume tokens until the next token is a non-white space or we reach
         // the end of the file
-        while let Some(((_current_i, _current_c), (_next_i, next_c))) = tokens {
+        while let Some(((current_i, _current_c), (_next_i, next_c))) = tokens {
             match next_c {
                 ' ' | '\t' => tokens = self.iter.next(),
-                _ => break,
+                _ => {
+                    self.previous_index = self.get_safe_index(current_i);
+                    break;
+                }
             }
         }
     }
@@ -386,6 +390,8 @@ impl<'input> Lexer<'input> {
             _ => false,
         };
 
+        let mut found_token_before_space = false;
+
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
                 || c == '"'
@@ -419,6 +425,13 @@ impl<'input> Lexer<'input> {
                     if !found_quote {
                         return;
                     }
+                    if has_whitespace {
+                        found_token_before_space = true;
+                    }
+
+                    if self.found_assign_op {
+                        self.trim_start = false;
+                    }
                 }
                 c if (c == '$' && cc == '(') => {
                     let found_variable =
@@ -431,6 +444,12 @@ impl<'input> Lexer<'input> {
                         });
                     if !found_variable {
                         return;
+                    }
+                    if has_whitespace {
+                        found_token_before_space = true;
+                    }
+                    if self.found_assign_op {
+                        self.trim_start = false;
                     }
                 }
                 c if (c == '%' && cc == '(') => {
@@ -445,12 +464,19 @@ impl<'input> Lexer<'input> {
                     if !found_variable {
                         return;
                     }
+                    if has_whitespace {
+                        found_token_before_space = true;
+                    }
+                    if self.found_assign_op {
+                        self.trim_start = false;
+                    }
                 }
                 '|' => {
                     self.trim_end = true;
                     self.tokenize_or_operator(i);
                     has_whitespace = true;
                     self.trim_start = true;
+                    self.trim_end = false;
                     self.found_assign_op = false;
                 }
                 '&' => {
@@ -458,6 +484,7 @@ impl<'input> Lexer<'input> {
                     self.tokenize_and_operator(i);
                     has_whitespace = true;
                     self.trim_start = true;
+                    self.trim_end = false;
                     self.found_assign_op = false;
                 }
                 c if has_whitespace && (c == ' ' || c == '\t') => {
@@ -468,15 +495,16 @@ impl<'input> Lexer<'input> {
                     if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
                         if !unhandled.is_empty() {
                             self.scan_value(unhandled, prev_i);
-                            if !is_ifndef {
-                                has_whitespace = false;
-                            }
-                            self.push_token(i, Token::Space, i + 1);
+                            found_token_before_space = true;
                         }
-                        self.previous_index = self.get_safe_index(i + 1);
+                    }
+                    if found_token_before_space && !is_ifndef {
+                        self.push_token(i, Token::Space, i + 1);
+                        has_whitespace = false;
+                        found_token_before_space = false;
                     }
                     self.trim_start = true;
-
+                    self.trim_end = false;
                     self.previous_index = self.get_safe_index(i + 1);
                 }
                 _ => {}
@@ -552,8 +580,6 @@ impl<'input> Lexer<'input> {
             if let Some((prev_i, unhandled)) = self.get_unhandled_string(index, true) {
                 if !unhandled.is_empty() {
                     self.scan_value(unhandled, prev_i);
-                    self.start_of_line = false;
-                    self.trim_start = false;
                 }
             }
 
@@ -609,8 +635,6 @@ impl<'input> Lexer<'input> {
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
-                self.start_of_line = false;
-                self.trim_start = false;
             }
         }
 
@@ -629,7 +653,6 @@ impl<'input> Lexer<'input> {
                         }
                     }
                     self.push_token(ii, Token::QuoteEnd, ii + 1);
-                    self.trim_start = false;
                     self.previous_index = self.get_safe_index(ii + 1);
                     return true;
                 }
@@ -702,8 +725,6 @@ impl<'input> Lexer<'input> {
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
-                self.start_of_line = false;
-                self.trim_start = false;
             }
         }
         // Comment - Skip over the second slash
@@ -741,7 +762,6 @@ impl<'input> Lexer<'input> {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
                 self.start_of_line = false;
-                self.trim_start = false;
             }
         }
         // Find the matching end brace or paren or end of line
@@ -763,7 +783,6 @@ impl<'input> Lexer<'input> {
                 self.push_token(i, token, ii + 1);
                 self.previous_index = self.get_safe_index(ii + 1);
                 self.start_of_line = false;
-                self.trim_start = false;
                 return true;
             }
         }

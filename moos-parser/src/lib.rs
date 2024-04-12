@@ -22,6 +22,31 @@ pub type PlugParser = nsplug::nsplug::LinesParser;
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type ParseError<L, T, E> = lalrpop_util::ParseError<L, T, E>;
 
+pub trait TreeNode: ToString {
+    /// Get the range in the current line for the node
+    #[inline]
+    fn get_range(&self) -> lexers::TokenRange {
+        lexers::TokenRange {
+            start: self.get_start_index(),
+            end: self.get_end_index(),
+        }
+    }
+
+    /// Get the start index in the current line for the node
+    fn get_start_index(&self) -> u32;
+
+    /// Get the end index in the current line for the node
+    fn get_end_index(&self) -> u32;
+
+    /// Check if the specified index is inside the range of this node.
+    /// This will return true if the index is equal to the start or end index
+    /// as well.
+    #[inline]
+    fn is_inside(&self, index: u32) -> bool {
+        index >= self.get_start_index() && index <= self.get_end_index()
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

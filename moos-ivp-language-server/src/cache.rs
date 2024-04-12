@@ -1,10 +1,10 @@
 use crate::parsers::{moos, nsplug};
 
 use lsp_types::{
-    Diagnostic, DocumentLink, FoldingRange, InlayHint, SemanticToken, SemanticTokenModifier,
-    SemanticTokens, Url,
+    Diagnostic, DocumentLink, FoldingRange, FormattingOptions, InlayHint, SemanticToken,
+    SemanticTokenModifier, SemanticTokens, TextEdit, Url,
 };
-use moos_parser::lexers::TokenMap;
+use moos_parser::{lexers::TokenMap, nsplug::tree::FormatOptions};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
@@ -141,7 +141,7 @@ impl FileType {
             let filename = path.file_name().unwrap_or_default().to_str().unwrap_or("");
             return Self::from_filename(filename);
         } else {
-            return Self::Other;
+            return Self::default();
         }
     }
 
@@ -181,12 +181,12 @@ enum DocumentLinkType {
     IvpBehavior,
 }
 
-pub struct Project {
+pub struct Project<'a> {
     pub root: String,
-    pub documents: HashMap<Url, Document>,
+    pub documents: HashMap<Url, Document<'a>>,
 }
 
-impl Project {
+impl<'a> Project<'a> {
     pub fn new(root: String) -> Self {
         Self {
             root,
@@ -211,7 +211,7 @@ impl Project {
 }
 
 #[derive(Debug)]
-pub struct Document {
+pub struct Document<'a> {
     pub uri: Url,
     pub text: Arc<String>,
     pub file_type: FileType,
@@ -220,9 +220,10 @@ pub struct Document {
     pub folding_ranges: Vec<FoldingRange>,
     pub document_links: Vec<DocumentLink>,
     pub inlay_hints: Vec<InlayHint>,
+    pub plug_lines: moos_parser::nsplug::tree::Lines<'a>,
 }
 
-impl Document {
+impl<'a> Document<'a> {
     pub fn new(uri: Url, text: String) -> Self {
         let file_type = FileType::from_uri(&uri);
         Self {
@@ -234,6 +235,7 @@ impl Document {
             folding_ranges: Vec::new(),
             document_links: Vec::new(),
             inlay_hints: Vec::new(),
+            plug_lines: moos_parser::nsplug::tree::Lines::new(),
         }
     }
 
@@ -320,6 +322,34 @@ impl Document {
         // If we get this far, then it is a valid range
         self.folding_ranges.push(folding_range);
         return true;
+    }
+
+    pub fn get_formats(&self, options: &FormattingOptions) -> Option<Vec<TextEdit>> {
+        let format_options = options.into();
+
+        tracing::info!("Get Formats");
+
+        // Always parser the nsplug first
+        match self.file_type {
+            FileType::PlugMoosMission | FileType::PlugBehavior | FileType::Plug => {
+                return nsplug::format(self, &format_options)
+            }
+            _ => {}
+        }
+
+        // TODO: Handle other file types
+        match self.file_type {
+            FileType::MoosMission | FileType::PlugMoosMission => {}
+            FileType::Behavior | FileType::PlugBehavior => {
+                // TODO: Add Behavior parser
+            }
+            FileType::Plug => {}
+            FileType::Script => {}
+            FileType::Manifest => {}
+            FileType::Other => {}
+        }
+
+        None
     }
 }
 

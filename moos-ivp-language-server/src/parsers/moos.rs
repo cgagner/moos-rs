@@ -1,3 +1,4 @@
+use super::new_error_diagnostic;
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, InlayHint, InlayHintKind,
@@ -17,35 +18,6 @@ use moos_parser::{
     MoosParser, ParseError,
 };
 use tracing::{debug, error, info, trace, warn};
-
-pub fn new_diagnostic(
-    severity: DiagnosticSeverity,
-    start: &Location,
-    end: &Location,
-    message: String,
-) -> Diagnostic {
-    Diagnostic::new(
-        lsp_types::Range {
-            start: (*start).into(),
-            end: (*end).into(),
-        },
-        Some(severity),
-        None,
-        None,
-        message,
-        None,
-        None,
-    )
-}
-
-/// Helper method to create an error Diagnostic
-pub fn new_error_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::ERROR, start, end, message)
-}
-
-pub fn new_warning_diagnostic(start: &Location, end: &Location, message: String) -> Diagnostic {
-    new_diagnostic(DiagnosticSeverity::WARNING, start, end, message)
-}
 
 pub fn parse(document: &mut Document) {
     // NOTE: This clone is of a Rc<String>. It should not perform a deep copy

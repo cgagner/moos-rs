@@ -17,8 +17,8 @@ pub Line: Line<'input> = {
     IfNotDef => <>,
     MacroDefine => <>,
     MacroInclude => <>,
-    "EOL" => Line::EndOfLine,
-    //<comment:"Comment"> => Line::Comment(comment),
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    //<l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     UnknownMacro => <>,
     <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => { 
@@ -42,16 +42,17 @@ pub Line: Line<'input> = {
             _ => {}
         }
         state.errors.push(error); 
-        Line::Error(l.line, r.line)
+        Line::Error{start_line: l.line, end_line: r.line}
     },
 }
 
 MacroDefine: Line<'input> = {
-    <ml:@L> <d:"#define"> <mr:@R> <definition:MacroDefinition> <comment:"Comment"?> "EOL" => 
+    <ml:@L> <d:"#define"> <mr:@R> <definition:MacroDefinition> <comment:Comment?> <el:@L> "EOL" => 
         Line::Macro{
             macro_type: MacroType::Define{definition, range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment, 
             line: ml.line,
+            line_end_index: el.index,
         },
 }
 
@@ -65,11 +66,11 @@ MacroDefinition: MacroDefinition<'input> = {
 }
 
 MacroInclude: Line<'input> = {
-    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <tag: IncludeTag?> <l:@L> <comment:"Comment"?> <r:@R> "EOL" => {
-        if let Some(comment) = comment {
+    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <tag: IncludeTag?> <cl:@L> <comment:Comment?> <cr:@R> <el:@L>"EOL" => {
+        if let Some(comment) = &comment {
             let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
-                    error: PlugParseError::new_unexpected_comment(comment, l, r)
+                    error: PlugParseError::new_unexpected_comment(comment.text, cl, cr)
                 },
                 dropped_tokens: vec![]
             };
@@ -79,10 +80,10 @@ MacroInclude: Line<'input> = {
             macro_type: MacroType::Include{path, tag, range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment,
             line: ml.line,
+            line_end_index: el.index
         }
         
     }, 
-    // TODO: Need to add support for `#include filename <tag>`
 }
 
 UnknownMacro: Line<'input> = {
@@ -94,7 +95,7 @@ UnknownMacro: Line<'input> = {
                 dropped_tokens: vec![]
             };
         state.errors.push(e);
-        Line::Error(l.line, r.line)
+        Line::Error{start_line: l.line, end_line: r.line}
     }
 }
 
@@ -145,6 +146,10 @@ Quote: tree::Quote<'input> = {
     <l:@L> QuoteBegin <content: Value*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
 }
 
+Comment: tree::Comment<'input> = {
+    <l:@L> <text:"Comment"> <r:@R> => tree::Comment{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Comment`")},
+}
+
 IncludePath: tree::IncludePath<'input> = {
      <l:@L> <content: VariableStrings> <r:@R> => tree::IncludePath::VariableStrings(content, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
     Quote => tree::IncludePath::Quote(<>),
@@ -155,7 +160,7 @@ IncludeTag: tree::IncludeTag<'input> = {
 }
 
 IfDef: Line<'input> = {
-    <ml:@L> "#ifdef" <mr:@R> <condition:MacroCondition> "EOL" <body:Lines> <branch: IfDefBranch> => 
+    <ml:@L> "#ifdef" <mr:@R> <condition:MacroCondition> <el:@L> "EOL" <body:Lines> <branch: IfDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfDef{
                 condition,
@@ -165,6 +170,7 @@ IfDef: Line<'input> = {
                 }, 
             comment: None, 
             line: ml.line,
+            line_end_index: el.index,
         },
 }
 
@@ -209,7 +215,7 @@ MacroCondition: tree::MacroCondition<'input> = {
 }
 
 IfNotDef: Line<'input> = {
-    <ml:@L> "#ifndef" <mr:@R> <clauses:IfNotDefClauses> " "* "EOL" <body:Lines> <branch: IfNotDefBranch> => 
+    <ml:@L> "#ifndef" <mr:@R> <clauses:IfNotDefClauses> " "* <el:@L> "EOL" <body:Lines> <branch: IfNotDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfNotDef{
                 clauses,
@@ -219,6 +225,7 @@ IfNotDef: Line<'input> = {
                 }, 
             comment: None, 
             line: ml.line,
+            line_end_index: el.index,
         },
 }
 
