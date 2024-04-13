@@ -409,6 +409,9 @@ fn handle_macro_definition(document: &mut Document, line: u32, definition: &Macr
 }
 
 fn handle_macro_condition(document: &mut Document, line: u32, condition: &MacroCondition) {
+    // TODO: Need to add a error if the conditional has a mixture of
+    // disjunction and conjunction
+
     match condition {
         MacroCondition::Simple(definition) => handle_macro_definition(document, line, definition),
         MacroCondition::Disjunction {

@@ -194,6 +194,24 @@ impl<'input> ToString for VariableString<'input> {
     }
 }
 
+impl<'input> From<Value<'input>> for VariableString<'input> {
+    fn from(value: Value<'input>) -> Self {
+        match value {
+            Value::Boolean(_, text, range)
+            | Value::Integer(_, text, range)
+            | Value::Float(_, text, range)
+            | Value::String(text, range) => VariableString::String(text, range),
+            Value::Quote(quote) => {
+                tracing::error!(
+                    "Calling From<Value> to VariableString with a Quote is not supported."
+                );
+                VariableString::String("", quote.range)
+            }
+            Value::Variable(variable) => VariableString::Variable(variable),
+        }
+    }
+}
+
 impl<'input> From<Variable<'input>> for VariableString<'input> {
     fn from(value: Variable<'input>) -> Self {
         Self::Variable(value)
@@ -551,7 +569,7 @@ impl<'input> ToString for MacroType<'input> {
                 body: _,
                 range: _,
             } => {
-                let rtn = "#ifndef ".to_string();
+                let rtn = "#ifndef".to_string();
                 clauses
                     .iter()
                     .fold(rtn, |acc, v| acc + " " + v.to_string().as_str())

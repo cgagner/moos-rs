@@ -18,7 +18,6 @@ pub Line: Line<'input> = {
     MacroDefine => <>,
     MacroInclude => <>,
     <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
-    //<l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     UnknownMacro => <>,
     <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => { 
@@ -47,47 +46,74 @@ pub Line: Line<'input> = {
 }
 
 MacroDefine: Line<'input> = {
-    <ml:@L> <d:"#define"> <mr:@R> <definition:MacroDefinition> <comment:Comment?> <el:@L> "EOL" => 
+    <indent: WhiteSpace*> <ml:@L> <d:"#define"> <mr:@R> WhiteSpace+ <definition:MacroDefinition> <el:@L> "EOL" => 
         Line::Macro{
             macro_type: MacroType::Define{definition, range: TokenRange::new_line(ml,mr).unwrap()}, 
-            comment, 
+            comment: None, 
             line: ml.line,
             line_end_index: el.index,
         },
 }
 
 MacroDefinition: MacroDefinition<'input> = {
-    <name:VariableStrings> " "+ <value:Value+> => {
-        MacroDefinition::new(name, value.into())
+    <name:VariableStrings> WhiteSpace+ <values:Values> WhiteSpace* => {
+        MacroDefinition::new(name, values.into())
     },
-    <name:VariableStrings> " "* => {
+    <name:VariableStrings> WhiteSpace* => {
         MacroDefinition::new(name, Vec::new().into())
     }
 }
 
 MacroInclude: Line<'input> = {
-    <ml:@L> <d:"#include"> <mr:@R> <path:IncludePath> <tag: IncludeTag?> <cl:@L> <comment:Comment?> <cr:@R> <el:@L>"EOL" => {
-        if let Some(comment) = &comment {
-            let e = lalrpop_util::ErrorRecovery { 
-                error: lalrpop_util::ParseError::User {
-                    error: PlugParseError::new_unexpected_comment(comment.text, cl, cr)
-                },
-                dropped_tokens: vec![]
-            };
-            state.errors.push(e);
-        }
+    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
         Line::Macro{
-            macro_type: MacroType::Include{path, tag, range: TokenRange::new_line(ml,mr).unwrap()}, 
-            comment,
+            macro_type: MacroType::Include{
+                path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
+                tag: Some(tag),
+                range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment: None,
             line: ml.line,
             line_end_index: el.index
         }
-        
-    }, 
+    },
+    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+        Line::Macro{
+            macro_type: MacroType::Include{
+                path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
+                tag: None,
+                range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment: None,
+            line: ml.line,
+            line_end_index: el.index
+        }
+    },
+    // Quote
+    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
+        Line::Macro{
+            macro_type: MacroType::Include{
+                path: tree::IncludePath::Quote(path),
+                tag: Some(tag),
+                range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment: None,
+            line: ml.line,
+            line_end_index: el.index
+        }
+    },
+    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+        Line::Macro{
+            macro_type: MacroType::Include{
+                path: tree::IncludePath::Quote(path),
+                tag: None,
+                range: TokenRange::new_line(ml,mr).unwrap()}, 
+            comment: None,
+            line: ml.line,
+            line_end_index: el.index
+        }
+    },
 }
 
 UnknownMacro: Line<'input> = {
-     <l:@L> <m:"#unknown"> <r:@R> => {
+     <indent: WhiteSpace*> <l:@L> <m:"#unknown"> <r:@R> DropTokens* "EOL" => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     error: PlugParseError::new_unknown_macro(l, m)
@@ -133,7 +159,28 @@ Value: tree::Value<'input> = {
     <value: Variable> => value.into(),
 }
 
+DropTokens: () = {
+    "&&" => {},
+    "||" => {},
+    <value: Value> => {},
+    <WhiteSpace> => {},
+}
+
+Values: tree::Values<'input> = {
+    <values:Value+> => values.into(),
+    <mut lhs:Values> <l:@L> <ws: WhiteSpace+> <r:@R> <rhs:Value+> => {
+        for w in ws {
+            lhs.push(tree::Value::String(w, TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")));
+        }
+        lhs.extend(rhs);
+        lhs.into()
+    },
+}
+
 VariableString: tree::VariableString<'input> = {
+    <l:@L> <value:"bool"> <r:@R> => tree::VariableString::String(value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
+    <l:@L> <value:"int"> <r:@R> => tree::VariableString::String(value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
+    <l:@L> <value:"float"> <r:@R> => tree::VariableString::String(value.1, TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
     <l:@L> <value:"ValueString"> <r:@R> => tree::VariableString::String(value, TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
     Variable => tree::VariableString::Variable(<>),
 }
@@ -142,17 +189,24 @@ VariableStrings: tree::VariableStrings<'input> = {
     <variables: VariableString+> => variables.into()
 }
 
+IncludeString: tree::VariableStrings<'input> = {    
+    <variables: VariableString+> => variables.into(),
+    <mut lhs:IncludeString> <l:@L> <ws: WhiteSpace+> <r:@R> <rhs: VariableString+> => {
+        for w in ws {
+            lhs.push(tree::VariableString::String(w, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludeString`")));
+        }
+        lhs.extend(rhs);
+        lhs
+    },
+}
+
 Quote: tree::Quote<'input> = {
     <l:@L> QuoteBegin <content: Value*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
 }
 
-Comment: tree::Comment<'input> = {
-    <l:@L> <text:"Comment"> <r:@R> => tree::Comment{text, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Comment`")},
-}
-
 IncludePath: tree::IncludePath<'input> = {
-     <l:@L> <content: VariableStrings> <r:@R> => tree::IncludePath::VariableStrings(content, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
-    Quote => tree::IncludePath::Quote(<>),
+    <l:@L> <content: IncludeString> <r:@R> => tree::IncludePath::VariableStrings(content, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
+    <quote: Quote> => tree::IncludePath::Quote(quote),
 }
 
 IncludeTag: tree::IncludeTag<'input> = {
@@ -160,12 +214,12 @@ IncludeTag: tree::IncludeTag<'input> = {
 }
 
 IfDef: Line<'input> = {
-    <ml:@L> "#ifdef" <mr:@R> <condition:MacroCondition> <el:@L> "EOL" <body:Lines> <branch: IfDefBranch> => 
+    <indent: WhiteSpace*> <ml:@L> "#ifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> <el:@L> "EOL" <body:Line+?> <branch: IfDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfDef{
                 condition,
                 branch,
-                body,
+                body: body.unwrap_or_default().into(),
                 range: TokenRange::new_line(ml,mr).unwrap(),
                 }, 
             comment: None, 
@@ -175,23 +229,23 @@ IfDef: Line<'input> = {
 }
 
 IfDefBranch: tree::IfDefBranch<'input> = {
-    <ml:@L> "#elseifdef" <mr:@R> <condition:MacroCondition> "EOL" <body:Lines> <branch: IfDefBranch> => 
+    <indent: WhiteSpace*> <ml:@L> "#elseifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> "EOL" <body:Line+?> <branch: IfDefBranch> => 
         tree::IfDefBranch::ElseIfDef {
             line: ml.line,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
             condition,
-            body,
+            body: body.unwrap_or_default().into(),
             branch: Box::new(branch),
         },
-    <ml:@L> "#else" <mr:@R>  "EOL" <body:Lines> <endl:@L> "#endif" <endr:@R> => 
+    <indent: WhiteSpace*> <ml:@L> "#else" <mr:@R> WhiteSpace* "EOL" <body:Line+?> <endif_indent: WhiteSpace*> <endl:@L> "#endif" <endr:@R> WhiteSpace* "EOL" => 
         tree::IfDefBranch::Else {
             line: ml.line,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
-            body,
+            body: body.unwrap_or_default().into(),
             endif_line: endl.line,
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
         },
-    <ml:@L> "#endif" <mr:@R> "EOL" => 
+    <indent: WhiteSpace*> <ml:@L> "#endif" <mr:@R> WhiteSpace* "EOL" => 
         tree::IfDefBranch::EndIf {
             line: ml.line,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
@@ -200,13 +254,13 @@ IfDefBranch: tree::IfDefBranch<'input> = {
 
 MacroCondition: tree::MacroCondition<'input> = {
     MacroDefinition => tree::MacroCondition::Simple(<>),
-    <lhs: MacroDefinition> <l:@L> "||" <r:@R> <rhs: MacroCondition> => 
+    <lhs: MacroDefinition> <l:@L> "||" WhiteSpace* <r:@R> <rhs: MacroCondition> => 
         tree::MacroCondition::Disjunction{
             operator_range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `MacroCondition`"),
             lhs,
             rhs: Box::new(rhs),
         },
-    <lhs: MacroDefinition> <l:@L> "&&" <r:@R> <rhs: MacroCondition> => 
+    <lhs: MacroDefinition> <l:@L> "&&" WhiteSpace* <r:@R> <rhs: MacroCondition> => 
         tree::MacroCondition::Conjunction{
             operator_range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `MacroCondition`"),
             lhs,
@@ -215,12 +269,12 @@ MacroCondition: tree::MacroCondition<'input> = {
 }
 
 IfNotDef: Line<'input> = {
-    <ml:@L> "#ifndef" <mr:@R> <clauses:IfNotDefClauses> " "* <el:@L> "EOL" <body:Lines> <branch: IfNotDefBranch> => 
+    <indent: WhiteSpace*> <ml:@L> "#ifndef" <mr:@R> WhiteSpace+ <clauses:IfNotDefClauses> WhiteSpace* <el:@L> "EOL" <body:Line+?> <branch: IfNotDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfNotDef{
                 clauses,
                 branch,
-                body,
+                body: body.unwrap_or_default().into(),
                 range: TokenRange::new_line(ml,mr).unwrap(),
                 }, 
             comment: None, 
@@ -230,15 +284,15 @@ IfNotDef: Line<'input> = {
 }
 
 IfNotDefBranch: tree::IfNotDefBranch<'input> = {
-    <ml:@L> "#else" <mr:@R>  "EOL" <body:Lines> <endl:@L> "#endif" <endr:@R> => 
+    <indent: WhiteSpace*> <ml:@L> "#else" <mr:@R> WhiteSpace* "EOL" <body:Line+?> <endif_indent: WhiteSpace*> <endl:@L> "#endif" <endr:@R> WhiteSpace* "EOL" => 
         tree::IfNotDefBranch::Else {
             line: ml.line,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
-            body,
+            body: body.unwrap_or_default().into(),
             endif_line: endl.line,
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
         },
-    <ml:@L> "#endif" <mr:@R> "EOL" => 
+    <indent: WhiteSpace*> <ml:@L> "#endif" <mr:@R> WhiteSpace* "EOL" => 
         tree::IfNotDefBranch::EndIf {
             line: ml.line,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
@@ -247,7 +301,7 @@ IfNotDefBranch: tree::IfNotDefBranch<'input> = {
 
 IfNotDefClauses: tree::IfNotDefClauses<'input> = {
     <clause: VariableStrings> => clause.into(),
-    <mut clauses: IfNotDefClauses> " "+ <clause: VariableStrings> => {
+    <mut clauses: IfNotDefClauses> WhiteSpace+ <clause: VariableStrings> => {
         clauses.push(clause.into()); 
         clauses
     },
@@ -263,7 +317,6 @@ extern {
     type Error = PlugParseError<'input>;
     
     enum Token<'input> {
-        "Comment" => Token::Comment(<&'input str>),
         QuoteBegin => Token::QuoteBegin,
         QuoteEnd => Token::QuoteEnd,
         "ValueString" => Token::ValueString(<&'input str>),
@@ -287,6 +340,6 @@ extern {
         "&&" => Token::AndOperator,
         "<" => Token::LeftAngleBracket,
         ">" => Token::RightAngleBracket,
-        " " => Token::Space,
+        WhiteSpace => Token::WhiteSpace(<&'input str>),
     }
 }

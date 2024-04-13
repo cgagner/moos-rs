@@ -19,7 +19,6 @@ pub struct State<'input> {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Token<'input> {
-    Comment(&'input str),
     QuoteBegin,
     QuoteEnd,
     Boolean(bool, &'input str),
@@ -42,7 +41,7 @@ pub enum Token<'input> {
     AndOperator,
     LeftAngleBracket,
     RightAngleBracket,
-    Space,
+    WhiteSpace(&'input str),
     /// End of Line
     EOL,
     /// End of File
@@ -59,9 +58,6 @@ pub struct Lexer<'input> {
     line_number: u32,
     char_count: usize,
     start_of_line: bool,
-    found_assign_op: bool,
-    trim_start: bool,
-    trim_end: bool,
     token_queue: TokenQueue<'input>,
 }
 
@@ -85,9 +81,6 @@ impl<'input> Lexer<'input> {
             line_number: 0,
             char_count: 0,
             start_of_line: true,
-            found_assign_op: false,
-            trim_start: true,
-            trim_end: false,
             token_queue: TokenQueue::new(),
         }
     }
@@ -127,40 +120,13 @@ impl<'input> Lexer<'input> {
      *
      * # Parameters:
      * * `index`: Current index
-     * * `auto_trim`: Enable auto trim. This uses `self.trim_start` and
-     * `self.trim_end` to handle trimming.
      */
     #[inline]
-    fn get_unhandled_string(&self, index: usize, auto_trim: bool) -> Option<(usize, &'input str)> {
+    fn get_unhandled_string(&self, index: usize) -> Option<(usize, &'input str)> {
         if let Some(prev_i) = self.previous_index {
-            let start_index = if auto_trim && self.trim_start {
-                if let Some(index_after_whitespace) =
-                    self.input[prev_i..index].find(|c| c != ' ' && c != '\t')
-                {
-                    prev_i + index_after_whitespace
-                } else {
-                    prev_i
-                }
-            } else {
-                prev_i
-            };
+            let start_index = prev_i;
 
             let unhandled = &self.input[start_index..index];
-
-            // If auto_trim is
-            let unhandled = if auto_trim {
-                if self.trim_start && self.trim_end {
-                    unhandled.trim()
-                } else if self.trim_start {
-                    unhandled.trim_start()
-                } else if self.trim_end {
-                    unhandled.trim_end()
-                } else {
-                    unhandled
-                }
-            } else {
-                unhandled
-            };
 
             return if unhandled.is_empty() {
                 None
@@ -208,9 +174,6 @@ impl<'input> Lexer<'input> {
         self.line_number += 1;
         self.char_count = i + 1;
         self.start_of_line = true;
-        self.found_assign_op = false;
-        self.trim_start = true;
-        self.trim_end = false;
         self.previous_index = self.get_safe_index(i + 1);
     }
 
@@ -219,29 +182,27 @@ impl<'input> Lexer<'input> {
             return;
         }
 
-        if self.found_assign_op {
-            if let Ok(value) = scan_integer(line) {
-                self.push_token(
-                    line_index,
-                    Token::Integer(value, line),
-                    line_index + line.len(),
-                );
-                return;
-            } else if let Ok(value) = scan_float(line) {
-                self.push_token(
-                    line_index,
-                    Token::Float(value, line),
-                    line_index + line.len(),
-                );
-                return;
-            } else if let Ok(value) = scan_bool(line) {
-                self.push_token(
-                    line_index,
-                    Token::Boolean(value, line),
-                    line_index + line.len(),
-                );
-                return;
-            }
+        if let Ok(value) = scan_integer(line) {
+            self.push_token(
+                line_index,
+                Token::Integer(value, line),
+                line_index + line.len(),
+            );
+            return;
+        } else if let Ok(value) = scan_float(line) {
+            self.push_token(
+                line_index,
+                Token::Float(value, line),
+                line_index + line.len(),
+            );
+            return;
+        } else if let Ok(value) = scan_bool(line) {
+            self.push_token(
+                line_index,
+                Token::Boolean(value, line),
+                line_index + line.len(),
+            );
+            return;
         }
 
         self.push_token(
@@ -252,31 +213,19 @@ impl<'input> Lexer<'input> {
     }
 
     fn tokenize_or_operator(&mut self, i: usize) {
-        let mut tokens = self.iter.next();
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+        let _tokens = self.iter.next();
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
         }
         self.push_token(i, Token::OrOperator, i + 2);
         self.previous_index = self.get_safe_index(i + 2);
-
-        // Consume tokens until the next token is a non-white space or we reach
-        // the end of the file
-        while let Some(((current_i, _current_c), (_next_i, next_c))) = tokens {
-            match next_c {
-                ' ' | '\t' => tokens = self.iter.next(),
-                _ => {
-                    self.previous_index = self.get_safe_index(current_i);
-                    break;
-                }
-            }
-        }
     }
 
     fn tokenize_and_operator(&mut self, i: usize) {
-        let mut tokens = self.iter.next();
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+        let _tokens = self.iter.next();
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
@@ -284,18 +233,23 @@ impl<'input> Lexer<'input> {
 
         self.push_token(i, Token::AndOperator, i + 2);
         self.previous_index = self.get_safe_index(i + 2);
+    }
 
-        // Consume tokens until the next token is a non-white space or we reach
-        // the end of the file
-        while let Some(((current_i, _current_c), (_next_i, next_c))) = tokens {
-            match next_c {
-                ' ' | '\t' => tokens = self.iter.next(),
-                _ => {
-                    self.previous_index = self.get_safe_index(current_i);
-                    break;
-                }
+    fn tokenize_include_bracket(&mut self, i: usize, c: char) {
+        let token = match c {
+            '<' => Token::LeftAngleBracket,
+            '>' => Token::RightAngleBracket,
+            _ => return,
+        };
+
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
+            if !unhandled.is_empty() {
+                self.scan_value(unhandled, prev_i);
             }
         }
+
+        self.push_token(i, token, i + 1);
+        self.previous_index = self.get_safe_index(i + 1);
     }
 
     fn get_macro_token(line: &'input str) -> Token<'input> {
@@ -317,44 +271,42 @@ impl<'input> Lexer<'input> {
             return;
         }
 
-        if let Some((_prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
-            if !unhandled.trim_start().starts_with("#") {
+        // Make sure the current line starts with nothing but whitespace before
+        // the '#'
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
+            if !unhandled.trim().is_empty() {
                 return;
             }
+            // Push the indent as a whitespace token.
+            self.push_token(prev_i, Token::WhiteSpace(unhandled), i);
+            self.previous_index = self.get_safe_index(i);
         }
-        // [endif|else] - [comment] <-- Must have a space after endif
-        // include [quote|string|variable] [comment]
+        // [endif|else] <-- Must have a space after endif
+        // include [quote|string|variable]
         // define [key|variable] [value|variable]
         // [ifdef|elseifdef] [condition] [|| &&] [condition]
         // ifndef [key|variable]
         // [condition] => [string|quote|variable]
 
-        // TODO: We probably should remove parsing comments
-
-        // Find the macro by looking for the next whitespace, newline, or comment
-        let (token, _next_index) = if let Some(((ii, cc), (_iii, _ccc))) =
-            self.iter.find(|&((_ii, cc), (_iii, ccc))| {
-                cc == ' ' || cc == '\t'  // Whitespace
-                || cc == '\n'  // Newline
-                || (cc == '/' && ccc == '/') // Comment
+        // Find the macro by looking for the next whitespace or newline
+        let (token, _next_index) = if let Some(((_ii, _cc), (iii, ccc))) =
+            self.iter.find(|&((_ii, _cc), (_iii, ccc))| {
+                ccc == ' ' || ccc == '\t'  // Whitespace
+                || ccc == '\n' // Newline
             }) {
             // Get the line
-            let line = &self.input[i + 1..ii];
+            let line = &self.input[i + 1..iii];
             let token = Self::get_macro_token(line);
-            self.push_token(i, token, ii);
-            self.previous_index = self.get_safe_index(ii);
-            match cc {
+            self.push_token(i, token, iii);
+            self.previous_index = self.get_safe_index(iii);
+            match ccc {
                 '\n' => {
-                    self._handle_new_line(ii);
-                    return;
-                }
-                '/' => {
-                    self.tokenize_comment(ii);
+                    // Handle this back in the main tokenize method
                     return;
                 }
                 _ => {}
             }
-            (token, ii)
+            (token, iii)
         } else {
             // If we get here, we reached the end of the file.
             let line = &self.input[i + 1..];
@@ -364,10 +316,9 @@ impl<'input> Lexer<'input> {
             return;
         };
 
-        let (is_ifndef, is_include) = match token {
-            Token::MacroInclude => (false, true),
-            Token::MacroIfNotDef => (true, false),
-            _ => (false, false),
+        let is_include = match token {
+            Token::MacroInclude => true,
+            _ => false,
         };
 
         let has_conditions = match token {
@@ -379,58 +330,35 @@ impl<'input> Lexer<'input> {
             _ => false,
         };
 
-        let has_comments = match token {
-            Token::MacroElse | Token::MacroEndIf => true,
-            _ => false,
-        };
-
-        let mut has_whitespace = match token {
+        let has_whitespace = match token {
             Token::MacroDefine | Token::MacroIfDef | Token::MacroElseIfDef => true,
             Token::MacroIfNotDef => true,
-            _ => false,
+            _ => true,
         };
-
-        let mut found_token_before_space = false;
 
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
                 || c == '"'
                 || (has_whitespace && (c == ' ' || c == '\t')) // Whitespace
-                || (has_comments && (c == '/' && cc == '/')) // Comment
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (has_conditions && c == '|' && cc == '|') // Or operator
                 || (has_conditions && c == '&' && cc == '&' ) // And operator
-                || (is_include && (c == ' ' || c == '\t') && cc == '<') // Handle include tags
+                || (is_include && c == '<') // Handle include tags
+                || (is_include && c == '>') // Handle include tags
         }) {
             match c {
-                c if is_include && (c == ' ' || c == '\t') && cc == '<' => {
-                    // Handle include - This needs to happen before handling
-                    // the spaces below.
-                    let found_include_tag = self.tokenize_include_tag(i);
-                    if found_include_tag {
-                        return;
-                    }
+                c if is_include && (c == '<' || c == '>') => {
+                    self.tokenize_include_bracket(i, c);
                 }
                 '\n' => {
                     self.tokenize_new_line(i, false);
-                    return;
-                }
-                '/' => {
-                    self.tokenize_comment(i);
                     return;
                 }
                 '"' => {
                     let found_quote = self.tokenize_quote(i);
                     if !found_quote {
                         return;
-                    }
-                    if has_whitespace {
-                        found_token_before_space = true;
-                    }
-
-                    if self.found_assign_op {
-                        self.trim_start = false;
                     }
                 }
                 c if (c == '$' && cc == '(') => {
@@ -445,12 +373,6 @@ impl<'input> Lexer<'input> {
                     if !found_variable {
                         return;
                     }
-                    if has_whitespace {
-                        found_token_before_space = true;
-                    }
-                    if self.found_assign_op {
-                        self.trim_start = false;
-                    }
                 }
                 c if (c == '%' && cc == '(') => {
                     let found_variable =
@@ -464,48 +386,15 @@ impl<'input> Lexer<'input> {
                     if !found_variable {
                         return;
                     }
-                    if has_whitespace {
-                        found_token_before_space = true;
-                    }
-                    if self.found_assign_op {
-                        self.trim_start = false;
-                    }
                 }
                 '|' => {
-                    self.trim_end = true;
                     self.tokenize_or_operator(i);
-                    has_whitespace = true;
-                    self.trim_start = true;
-                    self.trim_end = false;
-                    self.found_assign_op = false;
                 }
                 '&' => {
-                    self.trim_end = true;
                     self.tokenize_and_operator(i);
-                    has_whitespace = true;
-                    self.trim_start = true;
-                    self.trim_end = false;
-                    self.found_assign_op = false;
                 }
                 c if has_whitespace && (c == ' ' || c == '\t') => {
-                    if !is_ifndef {
-                        self.found_assign_op = true; // Enables parsing primitives
-                    }
-                    self.trim_end = true;
-                    if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
-                        if !unhandled.is_empty() {
-                            self.scan_value(unhandled, prev_i);
-                            found_token_before_space = true;
-                        }
-                    }
-                    if found_token_before_space && !is_ifndef {
-                        self.push_token(i, Token::Space, i + 1);
-                        has_whitespace = false;
-                        found_token_before_space = false;
-                    }
-                    self.trim_start = true;
-                    self.trim_end = false;
-                    self.previous_index = self.get_safe_index(i + 1);
+                    self.tokenize_whitespace(i, cc);
                 }
                 _ => {}
             }
@@ -513,8 +402,7 @@ impl<'input> Lexer<'input> {
 
         // Should only get in here if we have reached the end of the input.
         // If so, check that there isn't some straggling unhandled string.
-        self.trim_end = true;
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len()) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
@@ -522,104 +410,8 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    fn tokenize_include_tag(&mut self, index: usize) -> bool {
-        // The include tag is a space followed by a '<', then a tag, then
-        // a '>' and the end of the line. If it does not follow that format,
-        // the characters should be treated as part of the include path.
-
-        // NOTE: We do NOT handle nested tags (E.G. <<my_tag>>) because
-        // nsplug doesn't care. It finds the first '<' then the last '>'.
-
-        // Make a clone of the iterator so we can look forward to the end of
-        // the line to see if this is a valid tag
-        let mut local_iter = self.iter.clone();
-
-        let mut right_bracket_location: Option<usize> = None;
-        let mut new_line_index: Option<usize> = None;
-
-        // Search until we find the end of the line. Mark the location of the
-        // last '>'.
-        while let Some(((i, c), (_ii, _cc))) = local_iter.find(|&((_i, c), (_ii, _cc))| {
-            c == '\n' // New line
-            || c == '>' // Right angle bracket
-        }) {
-            match c {
-                '>' => right_bracket_location = Some(i),
-                '\n' => {
-                    new_line_index = Some(i);
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(right_bracket_location) = right_bracket_location {
-            let remaining = if let Some(i) = new_line_index {
-                // Up to, but not including the new line
-                &self.input[index + 1..i]
-            } else {
-                // Until the end of the file
-                &self.input[index + 1..]
-            }
-            .trim();
-
-            // Check that the right bracket is the last character in the trimmed
-            // string.
-            if remaining.len() < 2 && !remaining.ends_with(">") {
-                return false;
-            }
-
-            // Check that there isn't any whitespace in the remaining
-            if let Some(_i) = remaining.find(char::is_whitespace) {
-                return false;
-            }
-
-            // We have found a tag.
-            // Push unhandled before the tag
-            self.trim_end = true;
-            if let Some((prev_i, unhandled)) = self.get_unhandled_string(index, true) {
-                if !unhandled.is_empty() {
-                    self.scan_value(unhandled, prev_i);
-                }
-            }
-
-            // Push the left angle bracket
-            self.push_token(index + 1, Token::LeftAngleBracket, index + 2);
-
-            // Push the tag as a value string
-            self.push_token(
-                index + 2,
-                Token::ValueString(&remaining[1..remaining.len() - 1]),
-                right_bracket_location,
-            );
-
-            // Push the right angle bracket
-            self.push_token(
-                right_bracket_location,
-                Token::RightAngleBracket,
-                right_bracket_location + 1,
-            );
-
-            // If we found a new line, EOL
-            if let Some(i) = new_line_index {
-                self._handle_new_line(i);
-            } else {
-                self.previous_index = None;
-            }
-
-            // Update our iterator to our local copy
-            self.iter = local_iter;
-
-            return true;
-        } else {
-            return false;
-        }
-    }
-
     fn tokenize_new_line(&mut self, i: usize, drop_unhandled: bool) {
-        // Trim up to the new line
-        self.trim_end = true;
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() && !drop_unhandled {
                 self.scan_value(unhandled, prev_i);
             }
@@ -628,11 +420,44 @@ impl<'input> Lexer<'input> {
         // Break out of the tokenize for-loop after each line
     }
 
+    fn tokenize_whitespace(&mut self, i: usize, next_c: char) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
+            if !unhandled.is_empty() {
+                self.scan_value(unhandled, prev_i);
+            }
+        }
+
+        // If the next Character is a non-whitespace character, we can just
+        // push the whitespace token onto the queue and move on.
+        if next_c != ' ' && next_c != '\t' {
+            let text = &self.input[i..i + 1];
+            self.push_token(i, Token::WhiteSpace(text), i + 1);
+            self.previous_index = self.get_safe_index(i + 1);
+            return;
+        }
+
+        // Go until the next character is non-whitespace  or the end of the file
+        while let Some(((ii, _cc), (_iii, _ccc))) = self
+            .iter
+            .find(|&((_ii, _cc), (_iii, ccc))| ccc != ' ' && ccc != '\t')
+        {
+            let text = &self.input[i..ii + 1];
+            self.push_token(i, Token::WhiteSpace(text), ii + 1);
+            self.previous_index = self.get_safe_index(ii + 1);
+            return;
+        }
+
+        // Reached the end of the input
+        let text = &self.input[i..];
+        self.push_token(i, Token::WhiteSpace(text), self.input.len());
+        self.previous_index = None;
+    }
+
     /// Tokenize a quote.
     /// Returns true if a full quote is found; false if the end of the line
     /// or end of the file is reached without finding the matching quote.
     fn tokenize_quote(&mut self, i: usize) -> bool {
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
@@ -647,7 +472,7 @@ impl<'input> Lexer<'input> {
             match cc {
                 '"' => {
                     // Push any unhandled tokens before the QuoteEnd
-                    if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii, false) {
+                    if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii) {
                         if !unhandled.is_empty() {
                             self.scan_value(unhandled, prev_i);
                         }
@@ -675,7 +500,6 @@ impl<'input> Lexer<'input> {
                     }
                 }
                 cc if (cc == '%' && ccc == '(') => {
-                    // TODO: Add Quote Begin
                     let found_variable = self.tokenize_variable(
                         ii,
                         cc,
@@ -695,7 +519,7 @@ impl<'input> Lexer<'input> {
                 }
                 '\n' => {
                     // Push any unhandled tokens before the End of line
-                    if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii, false) {
+                    if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii) {
                         if !unhandled.is_empty() {
                             self.scan_value(unhandled, prev_i);
                         }
@@ -710,41 +534,13 @@ impl<'input> Lexer<'input> {
 
         // Reached the end of the input
         // Push any unhandled tokens before the end of the file
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), false) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len()) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
             }
         }
         self.previous_index = None;
         return false;
-    }
-
-    fn tokenize_comment(&mut self, i: usize) {
-        // Trim up to the comment
-        self.trim_end = true;
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
-            if !unhandled.is_empty() {
-                self.scan_value(unhandled, prev_i);
-            }
-        }
-        // Comment - Skip over the second slash
-        let _r = self.iter.next();
-        if let Some(((ii, _cc), (_iii, _ccc))) =
-            self.iter.find(|&((_ii, cc), (_iii, _ccc))| cc == '\n')
-        {
-            self.push_token(i, Token::Comment(&self.input[i + 2..ii].trim()), ii);
-            self.previous_index = self.get_safe_index(ii + 1);
-
-            self._handle_new_line(ii);
-        } else {
-            // Reached the end of the input
-            self.push_token(
-                i,
-                Token::Comment(&self.input[i + 2..].trim()),
-                self.input.len(),
-            );
-            self.previous_index = None;
-        }
     }
 
     /// Tokenize a Plug variable
@@ -758,7 +554,7 @@ impl<'input> Lexer<'input> {
         create_variable_func: F,
     ) -> bool {
         // Check for unhandled strings
-        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() {
                 self.scan_value(unhandled, prev_i);
                 self.start_of_line = false;
@@ -798,17 +594,14 @@ impl<'input> Lexer<'input> {
     fn tokenize(&mut self) {
         // Tokenize until we find:
         //   1. End of line
-        //   2. Comment // Deprecated. NSPlug does not really support comments
-        //   3. Plug variable
-        //   4. Plug upper variable
-        //   5. Macro
+        //   2. Plug variable
+        //   3. Plug upper variable
+        //   4. Macro
         //
         // Ignore other tokens
 
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
-                // NSPlug does not really support comments
-                // || (c == '/' && cc == '/') // Comment
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (c == '#') // Macro
@@ -819,8 +612,6 @@ impl<'input> Lexer<'input> {
                     // Break out of the tokenize for-loop after each line
                     break;
                 }
-                // NSPlug does not really support comments.
-                //'/' => self.tokenize_comment(i),
                 c if (c == '$' && cc == '(') => {
                     // drop the unhandled tokens before this because we are not
                     // on a macro line

@@ -112,6 +112,13 @@ macro_rules! vec_wrapper {
             pub fn last(&self) -> Option<&$type<'lt>> {
                 self.0.last()
             }
+
+            pub fn extend<I>(&mut self, iter: I)
+            where
+                I: IntoIterator<Item = $type<'lt>>,
+            {
+                self.0.extend(iter);
+            }
         }
 
         impl<'lt> From<Vec<$type<'lt>>> for $name<'lt> {
@@ -123,7 +130,7 @@ macro_rules! vec_wrapper {
         impl<'lt> From<$type<'lt>> for $name<'lt> {
             fn from(value: $type<'lt>) -> Self {
                 let values: Vec<$type<'lt>> = vec![value];
-                Self(values.into())
+                Self::from(values)
             }
         }
 
