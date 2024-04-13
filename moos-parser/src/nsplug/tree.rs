@@ -2,6 +2,28 @@ use crate::lexers::TokenRange;
 use crate::vec_wrapper;
 use crate::TreeNode;
 
+#[cfg(feature = "lsp-types")]
+fn create_text_edit(
+    new_text: String,
+    line: u32,
+    start_index: u32,
+    end_index: u32,
+) -> lsp_types::TextEdit {
+    lsp_types::TextEdit {
+        range: lsp_types::Range {
+            start: lsp_types::Position {
+                line,
+                character: start_index,
+            },
+            end: lsp_types::Position {
+                line: line,
+                character: end_index,
+            },
+        },
+        new_text,
+    }
+}
+
 #[derive(Debug)]
 pub enum Value<'input> {
     Boolean(bool, &'input str, TokenRange),
@@ -460,35 +482,63 @@ impl<'input> MacroType<'input> {
         &self,
         line: u32,
         line_end_index: u32,
+        current_indent: &str,
         format_options: &FormatOptions,
         level: u32,
     ) -> Vec<lsp_types::TextEdit> {
-        use lsp_types::Position;
-
         let mut lines = Vec::new();
 
-        /// TODO: Need to figure out how to handle tabs
-        let start_index = format_options.tab_size * level;
+        let indent = if format_options.insert_spaces {
+            format!("{: ^1$}", "", (level * format_options.tab_size) as usize)
+        } else {
+            format!("{:\t^1$}", "", level as usize)
+        };
+
+        let start_index = if format_options.insert_spaces {
+            format_options.tab_size * level
+        } else {
+            level
+        };
 
         let new_text = self.to_string();
 
-        if start_index != self.get_start_index()
+        if current_indent != indent
+            || start_index != self.get_start_index()
             || (start_index + new_text.len() as u32) != line_end_index
         {
+            let new_text = indent + new_text.as_str();
             tracing::info!("Formatting line({line}): '{new_text}'");
-            lines.push(lsp_types::TextEdit {
-                range: lsp_types::Range {
-                    start: lsp_types::Position {
-                        line,
-                        character: start_index,
-                    },
-                    end: lsp_types::Position {
-                        line: line,
-                        character: line_end_index,
-                    },
-                },
-                new_text,
-            });
+            lines.push(create_text_edit(new_text, line, 0, line_end_index));
+        }
+
+        match self {
+            MacroType::IfDef {
+                condition,
+                branch,
+                body,
+                range,
+            } => {
+                //
+                lines.extend(
+                    body.iter()
+                        .flat_map(|line| line.format(format_options, level + 1)),
+                );
+                lines.extend(branch.format(format_options, level));
+            }
+            MacroType::IfNotDef {
+                clauses,
+                branch,
+                body,
+                range,
+            } => {
+                lines.extend(
+                    body.iter()
+                        .flat_map(|line| line.format(format_options, level + 1)),
+                );
+                // TODO: Populate
+                lines.extend(branch.format(format_options, level));
+            }
+            _ => {}
         }
 
         /// TODO: Need to handle formats recursively
@@ -699,21 +749,29 @@ impl<'input> ToString for MacroCondition<'input> {
 pub enum IfDefBranch<'input> {
     ElseIfDef {
         line: u32,
+        line_end_index: u32,
         macro_range: TokenRange,
+        indent: &'input str,
         condition: MacroCondition<'input>,
         body: Lines<'input>,
         branch: Box<IfDefBranch<'input>>,
     },
     Else {
         line: u32,
+        line_end_index: u32,
         macro_range: TokenRange,
+        indent: &'input str,
         body: Lines<'input>,
         endif_line: u32,
+        endif_line_end_index: u32,
         endif_macro_range: TokenRange,
+        endif_indent: &'input str,
     },
     EndIf {
         line: u32,
+        line_end_index: u32,
         macro_range: TokenRange,
+        indent: &'input str,
     },
 }
 
@@ -721,97 +779,142 @@ impl<'input> IfDefBranch<'input> {
     /// Get start line of the branch.
     pub fn get_start_line(&self) -> u32 {
         match self {
-            IfDefBranch::ElseIfDef {
-                line,
-                macro_range: _,
-                condition: _,
-                body: _,
-                branch: _,
-            } => *line,
-            IfDefBranch::Else {
-                line,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => *line,
-            IfDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
+            IfDefBranch::ElseIfDef { line, .. } => *line,
+            IfDefBranch::Else { line, .. } => *line,
+            IfDefBranch::EndIf { line, .. } => *line,
         }
     }
 
     /// Get end line of this branch.
     pub fn get_end_line(&self) -> u32 {
         match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range: _,
-                condition: _,
-                body: _,
-                branch,
-            } => branch.get_start_line() - 1,
-            IfDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line,
-                endif_macro_range: _,
-            } => *endif_line - 1,
+            IfDefBranch::ElseIfDef { branch, .. } => branch.get_start_line() - 1,
+            IfDefBranch::Else { endif_line, .. } => *endif_line - 1,
             // For Endif, the start line and the end line are always the same.
+            IfDefBranch::EndIf { line, .. } => *line,
+        }
+    }
+
+    #[cfg(feature = "lsp-types")]
+    /// Create TextEdits for the macros. This should only manipulate the
+    /// whitespace in the line.
+    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+        let mut lines = Vec::new();
+
+        let new_indent = if format_options.insert_spaces {
+            format!("{: ^1$}", "", (level * format_options.tab_size) as usize)
+        } else {
+            format!("{:\t^1$}", "", level as usize)
+        };
+
+        let start_index = if format_options.insert_spaces {
+            format_options.tab_size * level
+        } else {
+            level
+        };
+
+        let new_text = self.to_string();
+
+        match self {
+            IfDefBranch::ElseIfDef {
+                line,
+                line_end_index,
+                macro_range: _,
+                indent,
+                condition: _,
+                body,
+                branch,
+            } => {
+                if new_indent != *indent
+                    || start_index != self.get_start_index()
+                    || (start_index + new_text.len() as u32) != *line_end_index
+                {
+                    let new_text = new_indent.clone() + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
+                }
+
+                lines.extend(
+                    body.iter()
+                        .flat_map(|line| line.format(format_options, level + 1)),
+                );
+
+                lines.extend(branch.format(format_options, level));
+            }
+            IfDefBranch::Else {
+                line,
+                line_end_index,
+                macro_range: _,
+                indent,
+                body,
+                endif_line,
+                endif_line_end_index,
+                endif_macro_range,
+                endif_indent,
+            } => {
+                if new_indent != *indent
+                    || start_index != self.get_start_index()
+                    || (start_index + new_text.len() as u32) != *line_end_index
+                {
+                    let new_text = new_indent.clone() + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
+                }
+
+                lines.extend(
+                    body.iter()
+                        .flat_map(|line| line.format(format_options, level + 1)),
+                );
+
+                let new_text = "#endif".to_string();
+                if new_indent != *endif_indent
+                    || start_index != endif_macro_range.start
+                    || (start_index + new_text.len() as u32) != *endif_line_end_index
+                {
+                    let new_text = new_indent + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(
+                        new_text,
+                        *endif_line,
+                        0,
+                        *endif_line_end_index,
+                    ));
+                }
+            }
             IfDefBranch::EndIf {
                 line,
+                line_end_index,
                 macro_range: _,
-            } => *line,
+                indent,
+            } => {
+                if new_indent != *indent
+                    || start_index != self.get_start_index()
+                    || (start_index + new_text.len() as u32) != *line_end_index
+                {
+                    let new_text = new_indent + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
+                }
+            }
         }
+        return lines;
     }
 }
 
 impl<'input> TreeNode for IfDefBranch<'input> {
     fn get_start_index(&self) -> u32 {
         match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range,
-                condition: _,
-                body: _,
-                branch: _,
-            } => macro_range.start,
-            IfDefBranch::Else {
-                line: _,
-                macro_range,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => macro_range.start,
-            IfDefBranch::EndIf {
-                line: _,
-                macro_range,
-            } => macro_range.start,
+            IfDefBranch::ElseIfDef { macro_range, .. } => macro_range.start,
+            IfDefBranch::Else { macro_range, .. } => macro_range.start,
+            IfDefBranch::EndIf { macro_range, .. } => macro_range.start,
         }
     }
 
     fn get_end_index(&self) -> u32 {
         match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range: _,
-                condition,
-                body: _,
-                branch: _,
-            } => condition.get_end_index(),
-            IfDefBranch::Else {
-                line: _,
-                macro_range,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => macro_range.end,
-            IfDefBranch::EndIf {
-                line: _,
-                macro_range,
-            } => macro_range.end,
+            IfDefBranch::ElseIfDef { condition, .. } => condition.get_end_index(),
+            IfDefBranch::Else { macro_range, .. } => macro_range.end,
+            IfDefBranch::EndIf { macro_range, .. } => macro_range.end,
         }
     }
 }
@@ -819,26 +922,11 @@ impl<'input> TreeNode for IfDefBranch<'input> {
 impl<'input> ToString for IfDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
-            IfDefBranch::ElseIfDef {
-                line: _,
-                macro_range: _,
-                condition,
-                body: _,
-                branch: _,
-            } => {
+            IfDefBranch::ElseIfDef { condition, .. } => {
                 format!("#elsifdef {}", condition.to_string())
             }
-            IfDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => "#else".to_string(),
-            IfDefBranch::EndIf {
-                line: _,
-                macro_range: _,
-            } => "#endif".to_string(),
+            IfDefBranch::Else { .. } => "#else".to_string(),
+            IfDefBranch::EndIf { .. } => "#endif".to_string(),
         }
     }
 }
@@ -867,14 +955,20 @@ impl<'input> TreeNode for IfNotDefClauses<'input> {
 pub enum IfNotDefBranch<'input> {
     Else {
         line: u32,
+        line_end_index: u32,
         macro_range: TokenRange,
+        indent: &'input str,
         body: Lines<'input>,
         endif_line: u32,
+        endif_line_end_index: u32,
         endif_macro_range: TokenRange,
+        endif_indent: &'input str,
     },
     EndIf {
         line: u32,
+        line_end_index: u32,
         macro_range: TokenRange,
+        indent: &'input str,
     },
 }
 
@@ -882,69 +976,113 @@ impl<'input> IfNotDefBranch<'input> {
     /// Get the start line of this branch
     pub fn get_start_line(&self) -> u32 {
         match self {
-            IfNotDefBranch::Else {
-                line,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => *line,
-            IfNotDefBranch::EndIf {
-                line,
-                macro_range: _,
-            } => *line,
+            IfNotDefBranch::Else { line, .. } => *line,
+            IfNotDefBranch::EndIf { line, .. } => *line,
         }
     }
 
     /// Get the end line of this branch.
     pub fn get_end_line(&self) -> u32 {
         match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line,
-                endif_macro_range: _,
-            } => *endif_line - 1,
+            IfNotDefBranch::Else { endif_line, .. } => *endif_line - 1,
             // For EndIf, the start and end lines are always the same.
+            IfNotDefBranch::EndIf { line, .. } => *line,
+        }
+    }
+
+    #[cfg(feature = "lsp-types")]
+    /// Create TextEdits for the macros. This should only manipulate the
+    /// whitespace in the line.
+    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+        let mut lines = Vec::new();
+
+        let new_indent = if format_options.insert_spaces {
+            format!("{: ^1$}", "", (level * format_options.tab_size) as usize)
+        } else {
+            format!("{:\t^1$}", "", level as usize)
+        };
+
+        let start_index = if format_options.insert_spaces {
+            format_options.tab_size * level
+        } else {
+            level
+        };
+
+        let new_text = self.to_string();
+
+        match self {
+            IfNotDefBranch::Else {
+                line,
+                line_end_index,
+                macro_range: _,
+                indent,
+                body,
+                endif_line,
+                endif_line_end_index,
+                endif_macro_range,
+                endif_indent,
+            } => {
+                if new_indent != *indent
+                    || start_index != self.get_start_index()
+                    || (start_index + new_text.len() as u32) != *line_end_index
+                {
+                    let new_text = new_indent.clone() + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
+                }
+
+                lines.extend(
+                    body.iter()
+                        .flat_map(|line| line.format(format_options, level + 1)),
+                );
+
+                let new_text = "#endif".to_string();
+                if new_indent != *endif_indent
+                    || start_index != endif_macro_range.start
+                    || (start_index + new_text.len() as u32) != *endif_line_end_index
+                {
+                    let new_text = new_indent + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(
+                        new_text,
+                        *endif_line,
+                        0,
+                        *endif_line_end_index,
+                    ));
+                }
+            }
             IfNotDefBranch::EndIf {
                 line,
+                line_end_index,
                 macro_range: _,
-            } => *line,
+                indent,
+            } => {
+                if new_indent != *indent
+                    || start_index != self.get_start_index()
+                    || (start_index + new_text.len() as u32) != *line_end_index
+                {
+                    let new_text = new_indent + new_text.as_str();
+                    tracing::info!("Formatting line({line}): '{new_text}'");
+                    lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
+                }
+            }
         }
+        return lines;
     }
 }
 
 impl<'input> TreeNode for IfNotDefBranch<'input> {
     fn get_start_index(&self) -> u32 {
         match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => macro_range.start,
-            IfNotDefBranch::EndIf {
-                line: _,
-                macro_range,
-            } => macro_range.start,
+            IfNotDefBranch::Else { macro_range, .. } => macro_range.start,
+            IfNotDefBranch::EndIf { macro_range, .. } => macro_range.start,
         }
     }
 
     fn get_end_index(&self) -> u32 {
         match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => macro_range.end,
-            IfNotDefBranch::EndIf {
-                line: _,
-                macro_range,
-            } => macro_range.end,
+            IfNotDefBranch::Else { macro_range, .. } => macro_range.end,
+            IfNotDefBranch::EndIf { macro_range, .. } => macro_range.end,
         }
     }
 }
@@ -952,17 +1090,8 @@ impl<'input> TreeNode for IfNotDefBranch<'input> {
 impl<'input> ToString for IfNotDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
-            IfNotDefBranch::Else {
-                line: _,
-                macro_range: _,
-                body: _,
-                endif_line: _,
-                endif_macro_range: _,
-            } => "#else".to_string(),
-            IfNotDefBranch::EndIf {
-                line: _,
-                macro_range: _,
-            } => "#endif".to_string(),
+            IfNotDefBranch::Else { .. } => "#else".to_string(),
+            IfNotDefBranch::EndIf { .. } => "#endif".to_string(),
         }
     }
 }
@@ -981,6 +1110,7 @@ pub enum Line<'input> {
         comment: Option<Comment<'input>>,
         line: u32,
         line_end_index: u32,
+        indent: &'input str,
     },
     Variable {
         variable: Variable<'input>,
@@ -1034,6 +1164,7 @@ impl<'input> Line<'input> {
                 comment: _,
                 line,
                 line_end_index: _,
+                indent: _,
             } => *line,
             Line::Variable { variable: _, line } => *line,
             Line::Error {
@@ -1052,9 +1183,9 @@ impl<'input> Line<'input> {
                 comment: _,
                 line,
                 line_end_index,
+                indent,
             } => {
-                // TODO: Handle comments, though they are note really supported
-                return macro_type.format(*line, *line_end_index, format_options, level);
+                return macro_type.format(*line, *line_end_index, indent, format_options, level);
             }
             _ => return Vec::new(),
         }
@@ -1074,6 +1205,7 @@ impl<'input> ToString for Line<'input> {
                 comment,
                 line: _,
                 line_end_index: _,
+                indent: _,
             } => {
                 if let Some(comment) = comment {
                     format!("{} {}", macro_type.to_string(), comment.to_string())

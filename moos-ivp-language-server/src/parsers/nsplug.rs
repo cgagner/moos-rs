@@ -85,7 +85,7 @@ pub fn parse(document: &mut Document) {
                     );
                     document.diagnostics.push(d);
                 }
-                PlugParseErrorKind::UnexpectedSymbol(c) => {}
+                PlugParseErrorKind::UnexpectedSymbol(_) => {}
                 PlugParseErrorKind::UnexpectedComment(comment) => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
@@ -145,6 +145,7 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                 comment: _,
                 line,
                 line_end_index: _,
+                indent: _,
             } => {
                 let line = *line;
                 match macro_type {
@@ -458,6 +459,7 @@ fn handle_ifdef_branch(
             condition,
             body,
             branch,
+            ..
         } => {
             handle_macro_token(document, *line, &macro_range);
             handle_macro_condition(document, *line, &condition);
@@ -470,13 +472,16 @@ fn handle_ifdef_branch(
             body,
             endif_line,
             endif_macro_range,
+            ..
         } => {
             handle_macro_token(document, *line, &macro_range);
             handle_lines(document, body);
             handle_macro_token(document, *endif_line, &endif_macro_range);
             add_inlay_text(document, *endif_line, endif_macro_range.end, parent_text);
         }
-        IfDefBranch::EndIf { line, macro_range } => {
+        IfDefBranch::EndIf {
+            line, macro_range, ..
+        } => {
             handle_macro_token(document, *line, &macro_range);
             add_inlay_text(document, *line, macro_range.end, parent_text);
         }
@@ -503,13 +508,16 @@ fn handle_ifndef_branch(
             body,
             endif_line,
             endif_macro_range,
+            ..
         } => {
             handle_macro_token(document, *line, &macro_range);
             handle_lines(document, body);
             handle_macro_token(document, *endif_line, &endif_macro_range);
             add_inlay_text(document, *endif_line, endif_macro_range.end, parent_text);
         }
-        IfNotDefBranch::EndIf { line, macro_range } => {
+        IfNotDefBranch::EndIf {
+            line, macro_range, ..
+        } => {
             handle_macro_token(document, *line, &macro_range);
             add_inlay_text(document, *line, macro_range.end, parent_text);
         }

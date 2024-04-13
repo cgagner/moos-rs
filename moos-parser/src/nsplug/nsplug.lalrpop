@@ -46,12 +46,13 @@ pub Line: Line<'input> = {
 }
 
 MacroDefine: Line<'input> = {
-    <indent: WhiteSpace*> <ml:@L> <d:"#define"> <mr:@R> WhiteSpace+ <definition:MacroDefinition> <el:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> <d:"#define"> <mr:@R> WhiteSpace+ <definition:MacroDefinition> <el:@L> "EOL" => 
         Line::Macro{
             macro_type: MacroType::Define{definition, range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None, 
             line: ml.line,
             line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         },
 }
 
@@ -65,7 +66,7 @@ MacroDefinition: MacroDefinition<'input> = {
 }
 
 MacroInclude: Line<'input> = {
-    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
@@ -73,10 +74,11 @@ MacroInclude: Line<'input> = {
                 range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None,
             line: ml.line,
-            line_end_index: el.index
+            line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         }
     },
-    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
@@ -84,11 +86,12 @@ MacroInclude: Line<'input> = {
                 range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None,
             line: ml.line,
-            line_end_index: el.index
+            line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         }
     },
     // Quote
-    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::Quote(path),
@@ -96,10 +99,11 @@ MacroInclude: Line<'input> = {
                 range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None,
             line: ml.line,
-            line_end_index: el.index
+            line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         }
     },
-    <indent: WhiteSpace*> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::Quote(path),
@@ -107,13 +111,14 @@ MacroInclude: Line<'input> = {
                 range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None,
             line: ml.line,
-            line_end_index: el.index
+            line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         }
     },
 }
 
 UnknownMacro: Line<'input> = {
-     <indent: WhiteSpace*> <l:@L> <m:"#unknown"> <r:@R> DropTokens* "EOL" => {
+     <indent: WhiteSpace?> <l:@L> <m:"#unknown"> <r:@R> DropTokens* "EOL" => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     error: PlugParseError::new_unknown_macro(l, m)
@@ -214,7 +219,7 @@ IncludeTag: tree::IncludeTag<'input> = {
 }
 
 IfDef: Line<'input> = {
-    <indent: WhiteSpace*> <ml:@L> "#ifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> <el:@L> "EOL" <body:Line+?> <branch: IfDefBranch> => 
+    <indent: WhiteSpace?> <ml:@L> "#ifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> <el:@L> "EOL" <body:Line+?> <branch: IfDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfDef{
                 condition,
@@ -225,30 +230,39 @@ IfDef: Line<'input> = {
             comment: None, 
             line: ml.line,
             line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         },
 }
 
 IfDefBranch: tree::IfDefBranch<'input> = {
-    <indent: WhiteSpace*> <ml:@L> "#elseifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> "EOL" <body:Line+?> <branch: IfDefBranch> => 
+    <indent: WhiteSpace?> <ml:@L> "#elseifdef" <mr:@R> WhiteSpace+ <condition:MacroCondition> <el:@L> "EOL" <body:Line+?> <branch: IfDefBranch> => 
         tree::IfDefBranch::ElseIfDef {
             line: ml.line,
+            line_end_index: el.index,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            indent: indent.unwrap_or_default(),
             condition,
             body: body.unwrap_or_default().into(),
             branch: Box::new(branch),
         },
-    <indent: WhiteSpace*> <ml:@L> "#else" <mr:@R> WhiteSpace* "EOL" <body:Line+?> <endif_indent: WhiteSpace*> <endl:@L> "#endif" <endr:@R> WhiteSpace* "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> "EOL" => 
         tree::IfDefBranch::Else {
             line: ml.line,
+            line_end_index: el.index,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            indent: indent.unwrap_or_default(),
             body: body.unwrap_or_default().into(),
             endif_line: endl.line,
+            endif_line_end_index: eel.index,
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
+            endif_indent: endif_indent.unwrap_or_default(),
         },
-    <indent: WhiteSpace*> <ml:@L> "#endif" <mr:@R> WhiteSpace* "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> "EOL" => 
         tree::IfDefBranch::EndIf {
             line: ml.line,
+            line_end_index: el.index,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            indent: indent.unwrap_or_default(),
         },
 }
 
@@ -269,7 +283,7 @@ MacroCondition: tree::MacroCondition<'input> = {
 }
 
 IfNotDef: Line<'input> = {
-    <indent: WhiteSpace*> <ml:@L> "#ifndef" <mr:@R> WhiteSpace+ <clauses:IfNotDefClauses> WhiteSpace* <el:@L> "EOL" <body:Line+?> <branch: IfNotDefBranch> => 
+    <indent: WhiteSpace?> <ml:@L> "#ifndef" <mr:@R> WhiteSpace+ <clauses:IfNotDefClauses> WhiteSpace* <el:@L> "EOL" <body:Line+?> <branch: IfNotDefBranch> => 
         Line::Macro{
             macro_type: MacroType::IfNotDef{
                 clauses,
@@ -280,22 +294,29 @@ IfNotDef: Line<'input> = {
             comment: None, 
             line: ml.line,
             line_end_index: el.index,
+            indent: indent.unwrap_or_default(),
         },
 }
 
 IfNotDefBranch: tree::IfNotDefBranch<'input> = {
-    <indent: WhiteSpace*> <ml:@L> "#else" <mr:@R> WhiteSpace* "EOL" <body:Line+?> <endif_indent: WhiteSpace*> <endl:@L> "#endif" <endr:@R> WhiteSpace* "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> "EOL" => 
         tree::IfNotDefBranch::Else {
             line: ml.line,
+            line_end_index: el.index,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            indent: indent.unwrap_or_default(),
             body: body.unwrap_or_default().into(),
             endif_line: endl.line,
+            endif_line_end_index: eel.index,
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
+            endif_indent: endif_indent.unwrap_or_default(),
         },
-    <indent: WhiteSpace*> <ml:@L> "#endif" <mr:@R> WhiteSpace* "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> "EOL" => 
         tree::IfNotDefBranch::EndIf {
             line: ml.line,
+            line_end_index: el.index,
             macro_range: TokenRange::new_line(ml,mr).unwrap(),
+            indent: indent.unwrap_or_default(),
         },
 }
 
