@@ -1,8 +1,9 @@
 use crate::parsers::{moos, nsplug};
 
 use lsp_types::{
-    Diagnostic, DocumentLink, FoldingRange, FormattingOptions, InlayHint, SemanticToken,
-    SemanticTokenModifier, SemanticTokens, TextEdit, Url,
+    CompletionContext, CompletionItem, CompletionList, CompletionResponse, Diagnostic,
+    DocumentLink, FoldingRange, FormattingOptions, InlayHint, SemanticToken, SemanticTokenModifier,
+    SemanticTokens, TextEdit, Url,
 };
 use moos_parser::{lexers::TokenMap, nsplug::tree::FormatOptions};
 use serde::{Deserialize, Serialize};
@@ -167,6 +168,27 @@ impl FileType {
             "bash" | "sh" | "zsh" => return Self::Script,
             "mfs" | "gfs" => return Self::Manifest,
             _ => return Self::Other,
+        }
+    }
+
+    pub fn is_plug(&self) -> bool {
+        match self {
+            Self::Plug | Self::PlugBehavior | Self::PlugMoosMission => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_moos_mission(&self) -> bool {
+        match self {
+            Self::MoosMission | Self::PlugMoosMission => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_behavior(&self) -> bool {
+        match self {
+            Self::PlugBehavior | Self::Behavior => true,
+            _ => false,
         }
     }
 }
@@ -349,6 +371,100 @@ impl<'a> Document<'a> {
             FileType::Other => {}
         }
 
+        None
+    }
+
+    pub fn get_completion(
+        &self,
+        position: lsp_types::Position,
+        context: Option<CompletionContext>,
+    ) -> Option<CompletionResponse> {
+        // TODO: Need to add completion for other file types
+        if !self.file_type.is_plug() {
+            return None;
+        }
+
+        let line_text = self
+            .text
+            .lines()
+            .nth(position.line as usize)
+            .unwrap_or_default();
+
+        if let Some(context) = context {
+            if let Some(trigger) = context.trigger_character {
+                if trigger == "#" {
+                    if line_text.trim() != "#" {
+                        return None;
+                    }
+
+                    let indent = if let Some((indent, _)) = line_text.split_once("#") {
+                        indent
+                    } else {
+                        ""
+                    };
+
+                    let endif_text = format!("{indent}#endif\n");
+
+                    let ifdef_completion = CompletionItem {
+                        label: "ifdef ".to_string(),
+                        detail: Some("NSPlug #ifdef".to_string()),
+                        additional_text_edits: Some(vec![TextEdit {
+                            range: lsp_types::Range {
+                                start: lsp_types::Position {
+                                    line: position.line + 1,
+                                    character: 0,
+                                },
+                                end: lsp_types::Position {
+                                    line: position.line + 1,
+                                    character: 0,
+                                },
+                            },
+                            // TODO: Need to add the indent
+                            new_text: endif_text.clone(),
+                        }]),
+                        ..Default::default()
+                    };
+                    let ifndef_completion = CompletionItem {
+                        label: "ifndef ".to_string(),
+                        detail: Some("NSPlug #ifndef".to_string()),
+                        additional_text_edits: Some(vec![TextEdit {
+                            range: lsp_types::Range {
+                                start: lsp_types::Position {
+                                    line: position.line + 1,
+                                    character: 0,
+                                },
+                                end: lsp_types::Position {
+                                    line: position.line + 1,
+                                    character: 0,
+                                },
+                            },
+                            new_text: endif_text,
+                        }]),
+                        ..Default::default()
+                    };
+                    let list = CompletionList {
+                        is_incomplete: false,
+
+                        items: vec![
+                            ifdef_completion,
+                            ifndef_completion,
+                            CompletionItem::new_simple(
+                                "include ".to_string(),
+                                "NSPlug #include".to_string(),
+                            ),
+                            CompletionItem::new_simple(
+                                "define ".to_string(),
+                                "NSPlug #define".to_string(),
+                            ),
+                        ],
+                    };
+
+                    return Some(CompletionResponse::List(list));
+                } else {
+                    tracing::info!("Unknown completion trigger: {trigger}");
+                }
+            }
+        }
         None
     }
 }

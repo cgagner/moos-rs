@@ -1,24 +1,19 @@
 use std::{
     error::Error,
-    f32::consts::E,
-    ops::DerefMut,
     sync::{Arc, Mutex},
 };
 
-use lsp_server::{Connection, Message, Notification, RequestId, Response};
+use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
-    notification::{
-        DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument, PublishDiagnostics,
-    },
+    notification::{DidChangeConfiguration, DidChangeTextDocument, DidOpenTextDocument},
     request::{
         Completion, DocumentLinkRequest, FoldingRangeRequest, Formatting, GotoDefinition,
         InlayHintRequest, InlineValueRequest, SemanticTokensFullRequest,
     },
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams, DocumentLink,
-    DocumentLinkParams, FoldingRange, FoldingRangeParams, GotoDefinitionResponse, InitializeParams,
-    InlayHint, InlayHintParams, OneOf, PublishDiagnosticsParams, SemanticTokens,
-    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentFormattingParams, DocumentLink, DocumentLinkParams, FoldingRange, FoldingRangeParams,
+    GotoDefinitionResponse, InitializeParams, InlayHint, InlayHintParams, PublishDiagnosticsParams,
+    SemanticTokens, SemanticTokensParams, SemanticTokensResult, TextEdit,
 };
 
 use crate::{cache::Project, workspace};
@@ -113,6 +108,14 @@ impl<'a> Handler<'a> {
         match MyRequests::from(request) {
             Completion(id, params) => {
                 mlog!("Got completion request #{id}: {params:?}");
+                let result = self.handle_completion(&id, params);
+                let result = serde_json::to_value(&result).unwrap();
+                let response = Response {
+                    id,
+                    result: Some(result),
+                    error: None,
+                };
+                return Some(response);
             }
             DocumentLinkRequest(id, params) => {
                 //
@@ -256,6 +259,24 @@ impl<'a> Handler<'a> {
         return None;
     }
 
+    fn handle_completion(
+        &mut self,
+        id: &RequestId,
+        params: CompletionParams,
+    ) -> Option<CompletionResponse> {
+        let uri = params.text_document_position.text_document.uri;
+
+        if let Ok(cache) = self.cache.lock() {
+            if let Some(doc) = cache.documents.get(&uri) {
+                //
+                let position = params.text_document_position.position;
+                return doc.get_completion(position, params.context);
+            }
+        }
+
+        None
+    }
+
     fn handle_inlay_hint_request(
         &mut self,
         id: &RequestId,
@@ -278,11 +299,7 @@ impl<'a> Handler<'a> {
                             .cloned()
                             .collect(),
                     );
-                } else {
-                    return None;
                 }
-            } else {
-                return None;
             }
         }
         return None;

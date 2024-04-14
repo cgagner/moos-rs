@@ -56,11 +56,11 @@ use std::error::Error;
 
 use lsp_server::{Connection, Message, RequestId};
 use lsp_types::{
-    ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, DocumentLinkOptions,
-    FoldingRangeProviderCapability, GotoDefinitionResponse, InitializeParams, OneOf,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
+    ClientCapabilities, CompletionOptions, DiagnosticOptions, DiagnosticServerCapabilities,
+    DocumentLinkOptions, FoldingRangeProviderCapability, GotoDefinitionResponse, InitializeParams,
+    OneOf, SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
 };
 
 use tracing::trace as mlog;
@@ -160,6 +160,10 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             work_done_progress_options: WorkDoneProgressOptions::default(),
         }),
         document_formatting_provider: Some(OneOf::Left(true)),
+        completion_provider: Some(CompletionOptions {
+            trigger_characters: Some(vec!["#".to_string()]),
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
