@@ -380,6 +380,12 @@ impl<'a> Document<'a> {
         context: Option<CompletionContext>,
     ) -> Option<CompletionResponse> {
         // TODO: Need to add completion for other file types
+        // TODO: Should moved each file type into a different module so this
+        //       method does not end up being 1000 lines.
+        // TODO: NSPlug
+        //       - Add completion for include paths
+        //       - Add else and else if when inside an ifdef or ifndef block.
+
         if !self.file_type.is_plug() {
             return None;
         }
