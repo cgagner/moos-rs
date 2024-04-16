@@ -161,6 +161,21 @@ impl FileType {
                 _ => return Self::Plug,
             }
         }
+
+        if filename.starts_with("app_") || filename.starts_with("moos_") {
+            match extension {
+                "plug" | "def" => return Self::PlugMoosMission,
+                _ => {}
+            }
+        }
+
+        if filename.starts_with("bhv_") {
+            match extension {
+                "plug" | "def" => return Self::PlugMoosMission,
+                _ => {}
+            }
+        }
+
         match extension {
             "moos" | "moos++" => return Self::MoosMission,
             "bhv" | "bhv++" => return Self::Behavior,
