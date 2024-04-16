@@ -12,6 +12,7 @@ use moos_parser::{
         tree::{
             FormatOptions, IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines,
             MacroCondition, MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings,
+            ENDIF_STR,
         },
     },
     ParseError, PlugParser,
@@ -106,7 +107,7 @@ pub fn parse(document: &mut Document) {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
-                        format!("Missing #endif"),
+                        format!("Missing {ENDIF_STR}"),
                     );
                     document.diagnostics.push(d);
                 }

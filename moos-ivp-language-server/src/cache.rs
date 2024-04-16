@@ -5,7 +5,7 @@ use lsp_types::{
     DocumentLink, FoldingRange, FormattingOptions, InlayHint, SemanticToken, SemanticTokenModifier,
     SemanticTokens, TextEdit, Url,
 };
-use moos_parser::{lexers::TokenMap, nsplug::tree::FormatOptions};
+use moos_parser::{lexers::TokenMap, nsplug::tree::ENDIF_STR};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
@@ -409,7 +409,7 @@ impl<'a> Document<'a> {
                         ""
                     };
 
-                    let endif_text = format!("{indent}#endif\n");
+                    let endif_text = format!("{indent}{ENDIF_STR}\n");
 
                     let ifdef_completion = CompletionItem {
                         label: "ifdef ".to_string(),

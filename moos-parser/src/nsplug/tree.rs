@@ -2,6 +2,14 @@ use crate::lexers::TokenRange;
 use crate::vec_wrapper;
 use crate::TreeNode;
 
+pub const DEFINE_STR: &str = "#define";
+pub const INCLUDE_STR: &str = "#include";
+pub const IFDEF_STR: &str = "#ifdef";
+pub const IFNDEF_STR: &str = "#ifndef";
+pub const ELSEIFDEF_STR: &str = "#elseifdef";
+pub const ELSE_STR: &str = "#else";
+pub const ENDIF_STR: &str = "#endif";
+
 #[cfg(feature = "lsp-types")]
 fn create_text_edit(
     new_text: String,
@@ -591,7 +599,7 @@ impl<'input> ToString for MacroType<'input> {
                 definition,
                 range: _,
             } => {
-                format!("#define {}", definition.to_string())
+                format!("{DEFINE_STR} {}", definition.to_string())
             }
             MacroType::Include {
                 path,
@@ -599,9 +607,9 @@ impl<'input> ToString for MacroType<'input> {
                 range: _,
             } => {
                 if let Some(tag) = tag {
-                    format!("#include {} {}", path.to_string(), tag.to_string())
+                    format!("{INCLUDE_STR} {} {}", path.to_string(), tag.to_string())
                 } else {
-                    format!("#include {}", path.to_string())
+                    format!("{INCLUDE_STR} {}", path.to_string())
                 }
             }
             MacroType::IfDef {
@@ -611,7 +619,7 @@ impl<'input> ToString for MacroType<'input> {
                 range: _,
             } => {
                 // TODO: Need to recursively print the branch and lines
-                format!("#ifdef {}", condition.to_string())
+                format!("{IFDEF_STR} {}", condition.to_string())
             }
             MacroType::IfNotDef {
                 clauses,
@@ -619,7 +627,7 @@ impl<'input> ToString for MacroType<'input> {
                 body: _,
                 range: _,
             } => {
-                let rtn = "#ifndef".to_string();
+                let rtn = IFNDEF_STR.to_string();
                 clauses
                     .iter()
                     .fold(rtn, |acc, v| acc + " " + v.to_string().as_str())
@@ -866,7 +874,7 @@ impl<'input> IfDefBranch<'input> {
                         .flat_map(|line| line.format(format_options, level + 1)),
                 );
 
-                let new_text = "#endif".to_string();
+                let new_text = ENDIF_STR.to_string();
                 if new_indent != *endif_indent
                     || start_index != endif_macro_range.start
                     || (start_index + new_text.len() as u32) != *endif_line_end_index
@@ -923,10 +931,10 @@ impl<'input> ToString for IfDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
             IfDefBranch::ElseIfDef { condition, .. } => {
-                format!("#elsifdef {}", condition.to_string())
+                format!("{ELSEIFDEF_STR} {}", condition.to_string())
             }
-            IfDefBranch::Else { .. } => "#else".to_string(),
-            IfDefBranch::EndIf { .. } => "#endif".to_string(),
+            IfDefBranch::Else { .. } => ELSE_STR.to_string(),
+            IfDefBranch::EndIf { .. } => ENDIF_STR.to_string(),
         }
     }
 }
@@ -1036,7 +1044,7 @@ impl<'input> IfNotDefBranch<'input> {
                         .flat_map(|line| line.format(format_options, level + 1)),
                 );
 
-                let new_text = "#endif".to_string();
+                let new_text = ENDIF_STR.to_string();
                 if new_indent != *endif_indent
                     || start_index != endif_macro_range.start
                     || (start_index + new_text.len() as u32) != *endif_line_end_index
@@ -1090,8 +1098,8 @@ impl<'input> TreeNode for IfNotDefBranch<'input> {
 impl<'input> ToString for IfNotDefBranch<'input> {
     fn to_string(&self) -> String {
         match self {
-            IfNotDefBranch::Else { .. } => "#else".to_string(),
-            IfNotDefBranch::EndIf { .. } => "#endif".to_string(),
+            IfNotDefBranch::Else { .. } => ELSE_STR.to_string(),
+            IfNotDefBranch::EndIf { .. } => ENDIF_STR.to_string(),
         }
     }
 }
