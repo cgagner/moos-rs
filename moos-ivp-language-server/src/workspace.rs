@@ -86,40 +86,40 @@ pub fn scan_workspace(
     // useless at the moment. We need a way to get the client to send us the
     // information about the workspace so we can send diagnostics.
 
-    // std::thread::spawn(move || {
-    //     std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2000));
 
-    //     for path_url in added {
-    //         if let Ok(text) = fs::read_to_string(path_url.path) {
-    //             if let Ok(cache) = &mut cache.lock() {
-    //                 let document = cache.insert(&path_url.url, text);
+        for path_url in added {
+            if let Ok(text) = fs::read_to_string(path_url.path) {
+                if let Ok(cache) = &mut cache.lock() {
+                    let document = cache.insert(&path_url.url, text);
 
-    //                 // TODO: Send diagnostics - Sending the diagnostics using
-    //                 // the method below does not seem to work for VSCode.
-    //                 // There are some mentions that the LSP protocol only
-    //                 // allows sending diagnostics for opened buffers.
+                    // TODO: Send diagnostics - Sending the diagnostics using
+                    // the method below does not seem to work for VSCode.
+                    // There are some mentions that the LSP protocol only
+                    // allows sending diagnostics for opened buffers.
 
-    //                 // let diagnostics = PublishDiagnosticsParams::new(
-    //                 //     path_url.url.clone(),
-    //                 //     document.diagnostics.clone(),
-    //                 //     None,
-    //                 // );
+                    // let diagnostics = PublishDiagnosticsParams::new(
+                    //     path_url.url.clone(),
+                    //     document.diagnostics.clone(),
+                    //     None,
+                    // );
 
-    //                 // let params = serde_json::to_value(&diagnostics).unwrap();
-    //                 // use lsp_types::notification::Notification;
-    //                 // let notification = lsp_server::Notification {
-    //                 //     method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
-    //                 //     params,
-    //                 // };
+                    // let params = serde_json::to_value(&diagnostics).unwrap();
+                    // use lsp_types::notification::Notification;
+                    // let notification = lsp_server::Notification {
+                    //     method: lsp_types::notification::PublishDiagnostics::METHOD.to_string(),
+                    //     params,
+                    // };
 
-    //                 // if let Ok(r) = sender.send(Message::Notification(notification)) {
-    //                 // } else {
-    //                 //     tracing::error!("Failed to send notification: {:?}", root_path);
-    //                 // }
-    //             }
-    //         }
-    //     }
-    // });
+                    // if let Ok(r) = sender.send(Message::Notification(notification)) {
+                    // } else {
+                    //     tracing::error!("Failed to send notification: {:?}", root_path);
+                    // }
+                }
+            }
+        }
+    });
 
     Ok(())
 }

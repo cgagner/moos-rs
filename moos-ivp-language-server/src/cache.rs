@@ -218,12 +218,12 @@ enum DocumentLinkType {
     IvpBehavior,
 }
 
-pub struct Project<'a> {
+pub struct Project {
     pub root: String,
-    pub documents: HashMap<Url, Document<'a>>,
+    pub documents: HashMap<Url, Document>,
 }
 
-impl<'a> Project<'a> {
+impl Project {
     pub fn new(root: String) -> Self {
         Self {
             root,
@@ -248,7 +248,7 @@ impl<'a> Project<'a> {
 }
 
 #[derive(Debug)]
-pub struct Document<'a> {
+pub struct Document {
     pub uri: Url,
     pub text: Arc<String>,
     pub file_type: FileType,
@@ -257,10 +257,9 @@ pub struct Document<'a> {
     pub folding_ranges: Vec<FoldingRange>,
     pub document_links: Vec<DocumentLink>,
     pub inlay_hints: Vec<InlayHint>,
-    pub plug_lines: moos_parser::nsplug::tree::Lines<'a>,
 }
 
-impl<'a> Document<'a> {
+impl Document {
     pub fn new(uri: Url, text: String) -> Self {
         let file_type = FileType::from_uri(&uri);
         Self {
@@ -272,7 +271,6 @@ impl<'a> Document<'a> {
             folding_ranges: Vec::new(),
             document_links: Vec::new(),
             inlay_hints: Vec::new(),
-            plug_lines: moos_parser::nsplug::tree::Lines::new(),
         }
     }
 

@@ -45,13 +45,13 @@ enum MyNotifications {
     DidChangeConfiguration,
 }
 
-pub struct Handler<'a> {
-    cache: Arc<Mutex<Project<'a>>>,
+pub struct Handler {
+    cache: Arc<Mutex<Project>>,
     connection: Connection,
     params: InitializeParams,
 }
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub fn new(connection: Connection, params: InitializeParams) -> Self {
         let root = params.root_path.clone().unwrap_or_default();
 
