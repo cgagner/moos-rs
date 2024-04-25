@@ -509,10 +509,10 @@ impl MacroType {
 
         match self {
             MacroType::IfDef {
-                condition,
+                condition: _,
                 branch,
                 body,
-                range,
+                range: _,
             } => {
                 //
                 lines.extend(
@@ -522,22 +522,20 @@ impl MacroType {
                 lines.extend(branch.format(format_options, level));
             }
             MacroType::IfNotDef {
-                clauses,
+                clauses: _,
                 branch,
                 body,
-                range,
+                range: _,
             } => {
                 lines.extend(
                     body.iter()
                         .flat_map(|line| line.format(format_options, level + 1)),
                 );
-                // TODO: Populate
                 lines.extend(branch.format(format_options, level));
             }
             _ => {}
         }
 
-        /// TODO: Need to handle formats recursively
         return lines;
     }
 }
@@ -606,7 +604,6 @@ impl ToString for MacroType {
                 body: _,
                 range: _,
             } => {
-                // TODO: Need to recursively print the branch and lines
                 format!("{IFDEF_STR} {}", condition.to_string())
             }
             MacroType::IfNotDef {
@@ -685,6 +682,60 @@ pub enum MacroCondition {
         lhs: MacroDefinition,
         rhs: Box<MacroCondition>,
     },
+}
+
+impl MacroCondition {
+    pub fn is_simple(&self) -> bool {
+        match self {
+            MacroCondition::Simple(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_disjunction(&self) -> bool {
+        match self {
+            MacroCondition::Disjunction { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_conjunction(&self) -> bool {
+        match self {
+            MacroCondition::Conjunction { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the condition is valid. Valid conditions are either Simple,
+    /// all disjunction, or all conjunction. I.E. a condition cannot contain
+    /// a mixture of disjunction and conjunction.
+    pub fn is_valid(&self) -> bool {
+        match self {
+            MacroCondition::Simple(_) => true,
+            MacroCondition::Disjunction { rhs, .. } => rhs.is_disjunction_recursive(),
+            MacroCondition::Conjunction { rhs, .. } => rhs.is_conjunction_recursive(),
+        }
+    }
+
+    /// Recursively check if all conditions are Disjunction or Simple.
+    /// Returns `false` if any node is Conjunction.
+    pub fn is_disjunction_recursive(&self) -> bool {
+        match self {
+            MacroCondition::Simple(_) => true,
+            MacroCondition::Disjunction { rhs, .. } => rhs.is_disjunction_recursive(),
+            MacroCondition::Conjunction { .. } => false,
+        }
+    }
+
+    /// Recursively check if all conditions are Conjunction or Simple.
+    /// Returns `false` if any node is Disjunction.
+    pub fn is_conjunction_recursive(&self) -> bool {
+        match self {
+            MacroCondition::Simple(_) => true,
+            MacroCondition::Disjunction { .. } => false,
+            MacroCondition::Conjunction { rhs, .. } => rhs.is_conjunction_recursive(),
+        }
+    }
 }
 
 impl TreeNode for MacroCondition {

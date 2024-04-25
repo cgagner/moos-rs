@@ -34,7 +34,7 @@ MOOS Mission files, IvP Behavior files, and NSPlug template files.
         message will be displayed if the parser detects an invalid structure. 
         In the case of a missing `#endif` two error messages will be displayed:
         one at the end if the file and one at the outer most `#ifdef`.
-      - TODO: Combining conjunctive and disjunctive in the same condition. 
+      - Combining conjunctive and disjunctive in the same condition. 
         NSPLug will display a warning by default and will fail in strict mode
         if it detects invalid conditions. The language server will treat these
         as errors.

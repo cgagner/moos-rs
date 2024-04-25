@@ -17,11 +17,13 @@ use moos_parser::{
             ENDIF_STR,
         },
     },
-    ParseError, PlugParser,
+    ParseError, PlugParser, TreeNode,
 };
 use tracing::{debug, error, info, trace, warn};
 
 use super::{find_relative_file, new_error_diagnostic};
+
+const INVALID_CONDITION_STR: &str = "Invalid conditions. #ifdef conditions cannot contain both disjunction (logical-or) and conjunction (logical-and) operators.";
 
 pub fn format(document: &Document, format_options: &FormatOptions) -> Option<Vec<TextEdit>> {
     let lines = &document.plug_lines;
@@ -176,6 +178,22 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
 
                         handle_macro_token(document, line, &range);
                         handle_macro_condition(document, line, &condition);
+                        if !condition.is_valid() {
+                            let start = Location {
+                                line,
+                                index: condition.get_start_index(),
+                            };
+                            let end = Location {
+                                line,
+                                index: condition.get_end_index(),
+                            };
+                            let d = new_error_diagnostic(
+                                &start,
+                                &end,
+                                INVALID_CONDITION_STR.to_string(),
+                            );
+                            document.diagnostics.push(d);
+                        }
                         handle_lines(document, body);
 
                         let parent_text = format!(" {}", macro_type.to_string());
@@ -407,9 +425,6 @@ fn handle_macro_definition(document: &mut Document, line: u32, definition: &Macr
 }
 
 fn handle_macro_condition(document: &mut Document, line: u32, condition: &MacroCondition) {
-    // TODO: Need to add a error if the conditional has a mixture of
-    // disjunction and conjunction
-
     match condition {
         MacroCondition::Simple(definition) => handle_macro_definition(document, line, definition),
         MacroCondition::Disjunction {
@@ -460,6 +475,19 @@ fn handle_ifdef_branch(
         } => {
             handle_macro_token(document, *line, &macro_range);
             handle_macro_condition(document, *line, &condition);
+            if !condition.is_valid() {
+                let start = Location {
+                    line: *line,
+                    index: condition.get_start_index(),
+                };
+                let end = Location {
+                    line: *line,
+                    index: condition.get_end_index(),
+                };
+                let d = new_error_diagnostic(&start, &end, INVALID_CONDITION_STR.to_string());
+                document.diagnostics.push(d);
+            }
+
             handle_lines(document, body);
             handle_ifdef_branch(document, *line, branch, parent_text);
         }
