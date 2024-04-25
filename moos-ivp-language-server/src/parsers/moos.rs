@@ -1,3 +1,5 @@
+use std::{ops::Deref, sync::Arc};
+
 use super::new_error_diagnostic;
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
 use lsp_types::{
@@ -20,14 +22,14 @@ use moos_parser::{
 use tracing::{debug, error, info, trace, warn};
 
 pub fn parse(document: &mut Document) {
-    // NOTE: This clone is of a Rc<String>. It should not perform a deep copy
-    // of the underlying String. This is needed to be able to pass a mutable
+    // NOTE: This clone is of a Arc<str>. It should not perform a deep copy
+    // of the underlying str. This is needed to be able to pass a mutable
     // reference to the Document and the Result from the parser to other
     // functions.
-    let text = document.text.clone();
-    let lexer = moos_parser::MoosLexer::new(text.as_str());
+    let text = Arc::clone(&document.text);
+    let lexer = moos_parser::MoosLexer::new(text.deref());
     let mut state = moos_parser::moos::lexer::State::default();
-    let result = MoosParser::new().parse(&mut state, text.as_str(), lexer);
+    let result = MoosParser::new().parse(&mut state, text.deref(), lexer);
 
     info!("Parse Results: {result:?}");
 

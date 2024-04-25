@@ -241,7 +241,7 @@ impl Project {
             .entry(uri.clone())
             .or_insert(Document::new(uri.clone(), String::new()));
 
-        document.text = Arc::new(text);
+        document.text = text.into();
         document.refresh();
         return document;
     }
@@ -250,13 +250,14 @@ impl Project {
 #[derive(Debug)]
 pub struct Document {
     pub uri: Url,
-    pub text: Arc<String>,
+    pub text: Arc<str>,
     pub file_type: FileType,
     pub semantic_tokens: TokenMap<SemanticTokenInfo>,
     pub diagnostics: Vec<Diagnostic>,
     pub folding_ranges: Vec<FoldingRange>,
     pub document_links: Vec<DocumentLink>,
     pub inlay_hints: Vec<InlayHint>,
+    pub plug_lines: moos_parser::nsplug::tree::Lines,
 }
 
 impl Document {
@@ -264,13 +265,14 @@ impl Document {
         let file_type = FileType::from_uri(&uri);
         Self {
             uri,
-            text: Arc::new(text),
+            text: text.into(),
             file_type,
             semantic_tokens: TokenMap::new(),
             diagnostics: Vec::new(),
             folding_ranges: Vec::new(),
             document_links: Vec::new(),
             inlay_hints: Vec::new(),
+            plug_lines: moos_parser::nsplug::tree::Lines::new(),
         }
     }
 

@@ -7,6 +7,20 @@ pub mod lexers;
 pub mod moos;
 pub mod nsplug;
 
+/// Type of Str used in parse trees. This type needs to own the str
+/// to get around issues with the borrow checker. This type could be changed
+/// to a `Arc<str>`, `Rc<str>`, or `Box<str>` depending on the need for thread
+/// safety.
+#[cfg(not(feature = "threadsafe-tree"))]
+pub type TreeStr = Box<str>;
+
+/// Type of Str used in parse trees. This type needs to own the str
+/// to get around issues with the borrow checker. This type could be changed
+/// to a `Arc<str>`, `Rc<str>`, or `Box<str>` depending on the need for thread
+/// safety.
+#[cfg(feature = "threadsafe-tree")]
+pub type TreeStr = std::sync::Arc<str>;
+
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type MoosParser = moos::moos::LinesParser;
 

@@ -1,17 +1,18 @@
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
+use crate::{TreeNode, TreeStr};
 
 #[derive(Debug)]
-pub enum Value<'input> {
-    Boolean(bool, &'input str, TokenRange),
-    Integer(i64, &'input str, TokenRange),
-    Float(f64, &'input str, TokenRange),
-    String(&'input str, TokenRange),
-    Quote(Quote<'input>),
-    Variable(Variable<'input>),
+pub enum Value {
+    Boolean(bool, TreeStr, TokenRange),
+    Integer(i64, TreeStr, TokenRange),
+    Float(f64, TreeStr, TokenRange),
+    String(TreeStr, TokenRange),
+    Quote(Quote),
+    Variable(Variable),
 }
 
-impl<'input> ToString for Value<'input> {
+impl ToString for Value {
     fn to_string(&self) -> String {
         match self {
             Self::Boolean(_, value_str, _)
@@ -24,16 +25,16 @@ impl<'input> ToString for Value<'input> {
     }
 }
 
-impl<'input> From<Variable<'input>> for Value<'input> {
-    fn from(value: Variable<'input>) -> Self {
+impl From<Variable> for Value {
+    fn from(value: Variable) -> Self {
         Self::Variable(value)
     }
 }
 
-impl<'input> TryFrom<Value<'input>> for Variable<'input> {
+impl TryFrom<Value> for Variable {
     type Error = ();
 
-    fn try_from(value: Value<'input>) -> Result<Self, Self::Error> {
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::Variable(variable) => Ok(variable),
             _ => Err(()),
@@ -44,18 +45,12 @@ impl<'input> TryFrom<Value<'input>> for Variable<'input> {
 // Declares a new struct Values that wraps a Vec<Value>
 vec_wrapper!(Values, Value);
 
-#[derive(Debug, Copy, Clone)]
-pub enum Variable<'input> {
-    Regular {
-        text: &'input str,
-        range: TokenRange,
-    },
-    Partial {
-        text: &'input str,
-        range: TokenRange,
-    },
+#[derive(Debug, Clone)]
+pub enum Variable {
+    Regular { text: TreeStr, range: TokenRange },
+    Partial { text: TreeStr, range: TokenRange },
 }
-impl<'input> ToString for Variable<'input> {
+impl ToString for Variable {
     fn to_string(&self) -> String {
         match self {
             Variable::Regular { text, range: _ } => format!("${{{}}}", text),
@@ -65,12 +60,12 @@ impl<'input> ToString for Variable<'input> {
 }
 
 #[derive(Debug, Clone)]
-pub enum VariableString<'input> {
-    String(&'input str, TokenRange),
-    Variable(Variable<'input>),
+pub enum VariableString {
+    String(TreeStr, TokenRange),
+    Variable(Variable),
 }
 
-impl<'input> VariableString<'input> {
+impl VariableString {
     #[inline]
     pub fn is_string(&self) -> bool {
         match *self {
@@ -88,7 +83,7 @@ impl<'input> VariableString<'input> {
     }
 }
 
-impl<'input> ToString for VariableString<'input> {
+impl ToString for VariableString {
     fn to_string(&self) -> String {
         match self {
             Self::String(value_str, _) => (*value_str).to_string(),
@@ -98,16 +93,16 @@ impl<'input> ToString for VariableString<'input> {
     }
 }
 
-impl<'input> From<Variable<'input>> for VariableString<'input> {
-    fn from(value: Variable<'input>) -> Self {
+impl From<Variable> for VariableString {
+    fn from(value: Variable) -> Self {
         Self::Variable(value)
     }
 }
 
-impl<'input> TryFrom<VariableString<'input>> for Variable<'input> {
+impl TryFrom<VariableString> for Variable {
     type Error = ();
 
-    fn try_from(value: VariableString<'input>) -> Result<Self, Self::Error> {
+    fn try_from(value: VariableString) -> Result<Self, Self::Error> {
         match value {
             VariableString::Variable(variable) => Ok(variable),
             _ => Err(()),
@@ -118,30 +113,30 @@ impl<'input> TryFrom<VariableString<'input>> for Variable<'input> {
 vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug)]
-pub struct Quote<'input> {
-    pub content: Values<'input>,
+pub struct Quote {
+    pub content: Values,
     pub range: TokenRange,
 }
 
-impl<'input> ToString for Quote<'input> {
+impl ToString for Quote {
     fn to_string(&self) -> String {
         return format!("\"{}\"", self.content.to_string());
     }
 }
 
-impl<'input> From<Quote<'input>> for Value<'input> {
-    fn from(value: Quote<'input>) -> Self {
+impl From<Quote> for Value {
+    fn from(value: Quote) -> Self {
         Self::Quote(value)
     }
 }
 
 #[derive(Debug)]
-pub struct Comment<'input> {
-    pub text: &'input str,
+pub struct Comment {
+    pub text: TreeStr,
     pub range: TokenRange,
 }
 
-impl<'input> ToString for Comment<'input> {
+impl ToString for Comment {
     fn to_string(&self) -> String {
         format!("// {}", self.text)
     }
@@ -149,13 +144,13 @@ impl<'input> ToString for Comment<'input> {
 
 #[derive(Debug)]
 
-pub struct Assignment<'input> {
-    pub name: VariableStrings<'input>,
-    pub value: Values<'input>,
-    pub comment: Option<Comment<'input>>,
+pub struct Assignment {
+    pub name: VariableStrings,
+    pub value: Values,
+    pub comment: Option<Comment>,
 }
 
-impl<'input> ToString for Assignment<'input> {
+impl ToString for Assignment {
     fn to_string(&self) -> String {
         if let Some(comment) = &self.comment {
             format!(
@@ -171,31 +166,31 @@ impl<'input> ToString for Assignment<'input> {
 }
 
 #[derive(Debug)]
-pub struct ProcessConfig<'input> {
+pub struct ProcessConfig {
     /// Comment at the end of the ProcessConfig line
-    pub process_config_comment: Option<Comment<'input>>,
+    pub process_config_comment: Option<Comment>,
     /// Name of the process
-    pub process_name: VariableStrings<'input>,
+    pub process_name: VariableStrings,
     /// Comments between ProcessConfig line and curly brace
-    pub prelude_comments: Lines<'input>,
+    pub prelude_comments: Lines,
     /// Line number for the opening curly brace
     pub open_curly_line: u32,
     /// Line number for the opening curly brace
     pub open_curly_index: u32,
     /// Comment after the open curly brace
-    pub open_curly_comment: Option<Comment<'input>>,
+    pub open_curly_comment: Option<Comment>,
     /// Line number of the closing curly brace
     pub close_curly_line: u32,
     /// Line number of the closing curly brace
     pub close_curly_index: u32,
     /// Comment after the close curly brace
-    pub close_curly_comment: Option<Comment<'input>>,
+    pub close_curly_comment: Option<Comment>,
     /// Lines inside of the ProcessConfig block. This should throw an error
     /// if a ProcessConfig is found inside another ProcessConfig
-    pub body: Lines<'input>,
+    pub body: Lines,
 }
 
-impl<'input> ToString for ProcessConfig<'input> {
+impl ToString for ProcessConfig {
     fn to_string(&self) -> String {
         if let Some(comment) = &self.process_config_comment {
             format!(
@@ -210,30 +205,30 @@ impl<'input> ToString for ProcessConfig<'input> {
 }
 
 #[derive(Debug)]
-pub enum Line<'input> {
+pub enum Line {
     Comment {
-        comment: Comment<'input>,
+        comment: Comment,
         line: u32,
     },
     Assignment {
-        assignment: Assignment<'input>,
+        assignment: Assignment,
         line: u32,
     },
     Define {
-        assignment: Assignment<'input>,
+        assignment: Assignment,
         line: u32,
         /// Range of the 'define:' keyword
         range: TokenRange,
     },
     ProcessConfig {
-        process_config: ProcessConfig<'input>,
+        process_config: ProcessConfig,
         /// Line of the ProcessConfig
         line: u32,
         /// Range of the 'ProcessConfig' keyword
         range: TokenRange,
     },
     Variable {
-        variable: Variable<'input>,
+        variable: Variable,
         line: u32,
     },
     Error {
@@ -246,7 +241,7 @@ pub enum Line<'input> {
     },
 }
 
-impl<'input> Line<'input> {
+impl Line {
     pub fn get_line_number(&self) -> u32 {
         match self {
             Line::Comment { comment: _, line } => *line,
@@ -274,7 +269,7 @@ impl<'input> Line<'input> {
     }
 }
 
-impl<'input> ToString for Line<'input> {
+impl ToString for Line {
     fn to_string(&self) -> String {
         match self {
             Line::Comment { comment, line: _ } => comment.to_string(),
@@ -320,12 +315,12 @@ mod tests {
         let mut values = Values::default();
 
         values.0.push(Value::String(
-            "My name is ",
+            "My name is ".into(),
             TokenRange::new(0, 11).unwrap(),
         ));
 
         values.0.push(Value::Variable(Variable::Regular {
-            text: "NAME",
+            text: "NAME".into(),
             range: TokenRange::new(11, 18).unwrap(),
         }));
 

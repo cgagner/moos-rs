@@ -1,3 +1,5 @@
+use std::{ops::Deref, sync::Arc};
+
 use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, InlayHint, InlayHintKind,
@@ -22,23 +24,16 @@ use tracing::{debug, error, info, trace, warn};
 use super::{find_relative_file, new_error_diagnostic};
 
 pub fn format(document: &Document, format_options: &FormatOptions) -> Option<Vec<TextEdit>> {
-    // TODO: THis should not have to re-parse the document, but I am fighting
-    // with the borrow checker. Problem for another day.
-    let text = document.text.clone();
-    let lexer = moos_parser::nsplug::lexer::Lexer::new(text.as_str());
-    let mut state = moos_parser::nsplug::lexer::State::default();
-    let result = PlugParser::new().parse(&mut state, text.as_str(), lexer);
+    let lines = &document.plug_lines;
 
-    if let Ok(lines) = result {
-        if !lines.is_empty() {
-            let edits: Vec<TextEdit> = lines
-                .iter()
-                .map(|line| line.format(&format_options, 0))
-                .flatten()
-                .collect();
-            if !edits.is_empty() {
-                return Some(edits);
-            }
+    if !lines.is_empty() {
+        let edits: Vec<TextEdit> = lines
+            .iter()
+            .map(|line| line.format(&format_options, 0))
+            .flatten()
+            .collect();
+        if !edits.is_empty() {
+            return Some(edits);
         }
     }
 
@@ -46,19 +41,20 @@ pub fn format(document: &Document, format_options: &FormatOptions) -> Option<Vec
 }
 
 pub fn parse(document: &mut Document) {
-    // NOTE: This clone is of a Rc<String>. It should not perform a deep copy
-    // of the underlying String. This is needed to be able to pass a mutable
+    // NOTE: This clone is of a Arc<str>. It should not perform a deep copy
+    // of the underlying str. This is needed to be able to pass a mutable
     // reference to the Document and the Result from the parser to other
     // functions.
-    let text = document.text.clone();
-    let lexer = moos_parser::nsplug::lexer::Lexer::new(text.as_str());
+    let text = Arc::clone(&document.text);
+    let lexer = moos_parser::nsplug::lexer::Lexer::new(text.deref());
     let mut state = moos_parser::nsplug::lexer::State::default();
-    let result = PlugParser::new().parse(&mut state, text.as_str(), lexer);
+    let result = PlugParser::new().parse(&mut state, text.deref(), lexer);
 
     info!("Parse Results: {result:?}");
 
     if let Ok(lines) = result {
         handle_lines(document, &lines);
+        document.plug_lines = lines;
     }
 
     state.errors.iter().for_each(|e| {

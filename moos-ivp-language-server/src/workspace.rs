@@ -9,6 +9,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 use tracing::info;
 
 use crate::cache::Project;
@@ -89,6 +90,8 @@ pub fn scan_workspace(
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2000));
 
+        let start = Instant::now();
+
         for path_url in added {
             if let Ok(text) = fs::read_to_string(path_url.path) {
                 if let Ok(cache) = &mut cache.lock() {
@@ -119,6 +122,9 @@ pub fn scan_workspace(
                 }
             }
         }
+
+        let diff = (Instant::now() - start).as_millis() as f64 * 1e-3;
+        tracing::info!("Workspace: parse time: {diff}")
     });
 
     Ok(())

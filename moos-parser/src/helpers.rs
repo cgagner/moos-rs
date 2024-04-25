@@ -38,10 +38,10 @@ pub fn get_environment_variable(
 macro_rules! vec_wrapper {
     ( $name:ident , $type:ident ) => {
         #[derive(Debug, Default)]
-        pub struct $name<'lt>(Vec<$type<'lt>>);
+        pub struct $name(Vec<$type>);
 
-        impl<'lt> IntoIterator for $name<'lt> {
-            type Item = $type<'lt>;
+        impl IntoIterator for $name {
+            type Item = $type;
             type IntoIter = std::vec::IntoIter<Self::Item>;
 
             fn into_iter(self) -> Self::IntoIter {
@@ -49,16 +49,16 @@ macro_rules! vec_wrapper {
             }
         }
 
-        impl<'lt> IntoIterator for &'lt $name<'lt> {
-            type Item = &'lt $type<'lt>;
-            type IntoIter = core::slice::Iter<'lt, $type<'lt>>;
+        impl<'lt> IntoIterator for &'lt $name {
+            type Item = &'lt $type;
+            type IntoIter = core::slice::Iter<'lt, $type>;
 
             fn into_iter(self) -> Self::IntoIter {
                 (&self.0).into_iter()
             }
         }
 
-        impl<'lt> $name<'lt> {
+        impl $name {
             pub fn new() -> Self {
                 Self(Vec::new())
             }
@@ -79,7 +79,7 @@ macro_rules! vec_wrapper {
             }
 
             #[inline]
-            pub fn iter(&self) -> core::slice::Iter<'lt, $type> {
+            pub fn iter(&self) -> core::slice::Iter<$type> {
                 self.0.iter()
             }
 
@@ -94,47 +94,47 @@ macro_rules! vec_wrapper {
             }
 
             #[inline]
-            pub fn first(&self) -> Option<&$type<'lt>> {
+            pub fn first(&self) -> Option<&$type> {
                 self.0.first()
             }
 
             #[inline]
-            pub fn push(&mut self, value: $type<'lt>) {
+            pub fn push(&mut self, value: $type) {
                 self.0.push(value);
             }
 
             #[inline]
-            pub fn pop(&mut self) -> Option<$type<'lt>> {
+            pub fn pop(&mut self) -> Option<$type> {
                 self.0.pop()
             }
 
             #[inline]
-            pub fn last(&self) -> Option<&$type<'lt>> {
+            pub fn last(&self) -> Option<&$type> {
                 self.0.last()
             }
 
             pub fn extend<I>(&mut self, iter: I)
             where
-                I: IntoIterator<Item = $type<'lt>>,
+                I: IntoIterator<Item = $type>,
             {
                 self.0.extend(iter);
             }
         }
 
-        impl<'lt> From<Vec<$type<'lt>>> for $name<'lt> {
-            fn from(values: Vec<$type<'lt>>) -> Self {
+        impl From<Vec<$type>> for $name {
+            fn from(values: Vec<$type>) -> Self {
                 Self(values)
             }
         }
 
-        impl<'lt> From<$type<'lt>> for $name<'lt> {
-            fn from(value: $type<'lt>) -> Self {
-                let values: Vec<$type<'lt>> = vec![value];
+        impl From<$type> for $name {
+            fn from(value: $type) -> Self {
+                let values: Vec<$type> = vec![value];
                 Self::from(values)
             }
         }
 
-        impl<'lt> ToString for $name<'lt> {
+        impl ToString for $name {
             fn to_string(&self) -> String {
                 let rtn = "".to_owned();
                 self.0

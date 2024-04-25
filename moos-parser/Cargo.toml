@@ -5,7 +5,9 @@ edition = "2021"
 build = "build.rs"
 
 [features]
+default = []
 lsp-types = ["dep:lsp-types"]
+threadsafe-tree = []
 
 [dependencies]
 regex = "1"
