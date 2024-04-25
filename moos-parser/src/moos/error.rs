@@ -1,13 +1,14 @@
 use crate::lexers::Location;
+use crate::TreeStr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct MoosParseError<'input> {
-    pub kind: MoosParseErrorKind<'input>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MoosParseError {
+    pub kind: MoosParseErrorKind,
     pub loc_start: Location,
     pub loc_end: Location,
 }
 
-impl<'input> MoosParseError<'input> {
+impl MoosParseError {
     pub fn new(kind: MoosParseErrorKind, loc_start: Location, loc_end: Location) -> MoosParseError {
         MoosParseError {
             kind,
@@ -15,11 +16,7 @@ impl<'input> MoosParseError<'input> {
             loc_end,
         }
     }
-    pub fn new_missing_trailing(
-        c: char,
-        loc_start: Location,
-        loc_end: Location,
-    ) -> MoosParseError<'input> {
+    pub fn new_missing_trailing(c: char, loc_start: Location, loc_end: Location) -> MoosParseError {
         MoosParseError {
             kind: MoosParseErrorKind::MissingTrailing(c),
             loc_start,
@@ -28,44 +25,41 @@ impl<'input> MoosParseError<'input> {
     }
 
     pub fn new_unexpected_comment(
-        comment: &'input str,
+        comment: &str,
         loc_start: Location,
         loc_end: Location,
-    ) -> MoosParseError<'input> {
+    ) -> MoosParseError {
         MoosParseError {
-            kind: MoosParseErrorKind::UnexpectedComment(comment),
+            kind: MoosParseErrorKind::UnexpectedComment(comment.into()),
             loc_start,
             loc_end,
         }
     }
 
-    pub fn new_unexpected_symbol(c: char, loc_end: Location) -> MoosParseError<'input> {
+    pub fn new_unexpected_symbol(c: char, loc_end: Location) -> MoosParseError {
         MoosParseError {
             kind: MoosParseErrorKind::UnexpectedSymbol(c),
             loc_start: loc_end,
             loc_end,
         }
     }
-    pub fn new_missing_endif(loc_start: Location, loc_end: Location) -> MoosParseError<'input> {
+    pub fn new_missing_endif(loc_start: Location, loc_end: Location) -> MoosParseError {
         MoosParseError {
             kind: MoosParseErrorKind::MissingEndIf,
             loc_start,
             loc_end,
         }
     }
-    pub fn new_missing_new_line(loc_start: Location, loc_end: Location) -> MoosParseError<'input> {
+    pub fn new_missing_new_line(loc_start: Location, loc_end: Location) -> MoosParseError {
         MoosParseError {
             kind: MoosParseErrorKind::MissingNewLine,
             loc_start,
             loc_end,
         }
     }
-    pub fn new_unknown_macro(
-        loc_start: Location,
-        macro_name: &'input str,
-    ) -> MoosParseError<'input> {
+    pub fn new_unknown_macro(loc_start: Location, macro_name: &str) -> MoosParseError {
         MoosParseError {
-            kind: MoosParseErrorKind::UnknownMacro(macro_name),
+            kind: MoosParseErrorKind::UnknownMacro(macro_name.into()),
             loc_start,
             loc_end: Location {
                 line: loc_start.line,
@@ -75,12 +69,12 @@ impl<'input> MoosParseError<'input> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum MoosParseErrorKind<'input> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MoosParseErrorKind {
     MissingEndIf,
     MissingTrailing(char),
     MissingNewLine,
-    UnexpectedComment(&'input str),
+    UnexpectedComment(TreeStr),
     UnexpectedSymbol(char),
-    UnknownMacro(&'input str),
+    UnknownMacro(TreeStr),
 }

@@ -10,14 +10,14 @@ use std::iter::{Chain, Repeat, Skip};
 use tracing::trace;
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
-pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError<'input>>>;
+pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, MoosParseError>>;
 
 const DEFINE_KEYWORD: &str = "define:";
 const PROCESS_CONFIG_KEYWORD: &str = "ProcessConfig";
 
 #[derive(Debug, Default, Clone)]
 pub struct State<'input> {
-    pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError<'input>>>,
+    pub errors: Vec<ErrorRecovery<Location, Token<'input>, MoosParseError>>,
     pub defines: HashMap<String, String>,
 }
 
@@ -573,7 +573,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Spanned<Token<'input>, Location, MoosParseError<'input>>;
+    type Item = Spanned<Token<'input>, Location, MoosParseError>;
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(token) = self.token_queue.pop_front() {
             return Some(token);

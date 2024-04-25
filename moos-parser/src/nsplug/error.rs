@@ -1,13 +1,14 @@
 use crate::lexers::Location;
+use crate::TreeStr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct PlugParseError<'input> {
-    pub kind: PlugParseErrorKind<'input>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlugParseError {
+    pub kind: PlugParseErrorKind,
     pub loc_start: Location,
     pub loc_end: Location,
 }
 
-impl<'input> PlugParseError<'input> {
+impl PlugParseError {
     pub fn new(kind: PlugParseErrorKind, loc_start: Location, loc_end: Location) -> PlugParseError {
         PlugParseError {
             kind,
@@ -15,11 +16,7 @@ impl<'input> PlugParseError<'input> {
             loc_end,
         }
     }
-    pub fn new_missing_trailing(
-        c: char,
-        loc_start: Location,
-        loc_end: Location,
-    ) -> PlugParseError<'input> {
+    pub fn new_missing_trailing(c: char, loc_start: Location, loc_end: Location) -> PlugParseError {
         PlugParseError {
             kind: PlugParseErrorKind::MissingTrailing(c),
             loc_start,
@@ -28,44 +25,41 @@ impl<'input> PlugParseError<'input> {
     }
 
     pub fn new_unexpected_comment(
-        comment: &'input str,
+        comment: &str,
         loc_start: Location,
         loc_end: Location,
-    ) -> PlugParseError<'input> {
+    ) -> PlugParseError {
         PlugParseError {
-            kind: PlugParseErrorKind::UnexpectedComment(comment),
+            kind: PlugParseErrorKind::UnexpectedComment(comment.into()),
             loc_start,
             loc_end,
         }
     }
 
-    pub fn new_unexpected_symbol(c: char, loc_end: Location) -> PlugParseError<'input> {
+    pub fn new_unexpected_symbol(c: char, loc_end: Location) -> PlugParseError {
         PlugParseError {
             kind: PlugParseErrorKind::UnexpectedSymbol(c),
             loc_start: loc_end,
             loc_end,
         }
     }
-    pub fn new_missing_endif(loc_start: Location, loc_end: Location) -> PlugParseError<'input> {
+    pub fn new_missing_endif(loc_start: Location, loc_end: Location) -> PlugParseError {
         PlugParseError {
             kind: PlugParseErrorKind::MissingEndIf,
             loc_start,
             loc_end,
         }
     }
-    pub fn new_missing_new_line(loc_start: Location, loc_end: Location) -> PlugParseError<'input> {
+    pub fn new_missing_new_line(loc_start: Location, loc_end: Location) -> PlugParseError {
         PlugParseError {
             kind: PlugParseErrorKind::MissingNewLine,
             loc_start,
             loc_end,
         }
     }
-    pub fn new_unknown_macro(
-        loc_start: Location,
-        macro_name: &'input str,
-    ) -> PlugParseError<'input> {
+    pub fn new_unknown_macro(loc_start: Location, macro_name: &str) -> PlugParseError {
         PlugParseError {
-            kind: PlugParseErrorKind::UnknownMacro(macro_name),
+            kind: PlugParseErrorKind::UnknownMacro(macro_name.into()),
             loc_start,
             loc_end: Location {
                 line: loc_start.line,
@@ -75,12 +69,12 @@ impl<'input> PlugParseError<'input> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum PlugParseErrorKind<'input> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlugParseErrorKind {
     MissingEndIf,
     MissingTrailing(char),
     MissingNewLine,
-    UnexpectedComment(&'input str),
+    UnexpectedComment(TreeStr),
     UnexpectedSymbol(char),
-    UnknownMacro(&'input str),
+    UnknownMacro(TreeStr),
 }

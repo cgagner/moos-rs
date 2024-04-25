@@ -335,7 +335,7 @@ IfNotDefClauses: tree::IfNotDefClauses = {
 
 extern {  
     type Location = crate::lexers::Location;
-    type Error = PlugParseError<'input>;
+    type Error = PlugParseError;
     
     enum Token<'input> {
         QuoteBegin => Token::QuoteBegin,

@@ -9,11 +9,11 @@ use std::collections::{HashMap, VecDeque};
 use std::iter::{Chain, Repeat, Skip};
 
 pub type Spanned<Token, Loc, Error> = Result<(Loc, Token, Loc), Error>;
-pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, PlugParseError<'input>>>;
+pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, PlugParseError>>;
 
 #[derive(Debug, Default, Clone)]
 pub struct State<'input> {
-    pub errors: Vec<ErrorRecovery<Location, Token<'input>, PlugParseError<'input>>>,
+    pub errors: Vec<ErrorRecovery<Location, Token<'input>, PlugParseError>>,
     pub defines: HashMap<String, String>,
 }
 
@@ -647,7 +647,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Spanned<Token<'input>, Location, PlugParseError<'input>>;
+    type Item = Spanned<Token<'input>, Location, PlugParseError>;
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(token) = self.token_queue.pop_front() {
             return Some(token);

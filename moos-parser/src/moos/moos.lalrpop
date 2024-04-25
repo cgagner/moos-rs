@@ -121,7 +121,7 @@ ProcessConfig: Line = {
 
 extern {  
     type Location = crate::lexers::Location;
-    type Error = MoosParseError<'input>;
+    type Error = MoosParseError;
     
     enum Token<'input> {
         "Comment" => Token::Comment(<&'input str>),
