@@ -18,33 +18,58 @@ struct PathUrl {
     path: PathBuf,
     url: Url,
 }
+fn is_moos_workspace_file(filename: &str, extension: &str) -> bool {
+    let extension = extension.to_ascii_lowercase();
+    match extension.as_str() {
+        "moos" | "moos++" | "bhv" | "bhv++" | "plug" | "def" => return true,
+        // TODO: We should check for launch scripts
+        //"bash" | "sh" | "zsh" => return Self::Script,
+        "mfs" | "gfs" => return true,
+        _ => {}
+    }
 
+    let filename = filename.to_ascii_lowercase();
+    if filename.starts_with("plug_")
+        || filename.starts_with("meta_")
+        || filename.starts_with("app_")
+        || filename.starts_with("moos_")
+        || filename.starts_with("bhv_")
+    {
+        return true;
+    }
+
+    return false;
+}
 fn visit_file(path: &Path, root_path: &str, root_uri: &Url) -> Option<PathUrl> {
-    if path.is_file() {
-        if let Some(extension) = path.extension() {
-            if let Some(extension) = extension.to_str() {
-                match extension {
-                    "moos" | "plug" | "def" | "moos++" | "meta" => {
-                        // TODO: Add real filter
+    if !path.is_file() {
+        return None;
+    }
 
-                        if let Ok(relative_path) = path.strip_prefix(Path::new(root_path)) {
-                            if let Some(rel_path) = relative_path.to_str() {
-                                if let Ok(rel_uri) = root_uri.join(rel_path) {
-                                    return Some(PathUrl {
-                                        path: path.to_owned(),
-                                        url: rel_uri,
-                                    });
-                                }
-                            }
-                        }
+    if let Some(extension) = path.extension() {
+        if let Some(extension) = extension.to_str() {
+            let filename = path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or_default();
+
+            if !is_moos_workspace_file(filename, extension) {
+                return None;
+            }
+
+            if let Ok(relative_path) = path.strip_prefix(Path::new(root_path)) {
+                if let Some(rel_path) = relative_path.to_str() {
+                    if let Ok(rel_uri) = root_uri.join(rel_path) {
+                        return Some(PathUrl {
+                            path: path.to_owned(),
+                            url: rel_uri,
+                        });
                     }
-                    _ => {}
                 }
             }
         }
-    } else {
-        return None;
     }
+
     return None;
 }
 
@@ -72,6 +97,8 @@ fn visit_dirs(dir: &Path, root_path: &str, root_uri: &Url) -> Vec<PathUrl> {
 
     return Vec::new();
 }
+
+// TODO: Add method for finding a file in a workspace
 
 pub fn scan_workspace(
     connection: &Connection,
