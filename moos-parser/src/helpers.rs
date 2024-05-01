@@ -143,23 +143,22 @@ macro_rules! vec_wrapper {
             }
         }
 
-        // TODO: This should be implemented here once all structs are tree nodes
-        // impl<'input> crate::TreeNode for $name<'input> {
-        //     fn get_start_index(&self) -> u32 {
-        //         if let Some(v) = self.0.first() {
-        //             v.get_start_index()
-        //         } else {
-        //             0
-        //         }
-        //     }
+        impl crate::TreeNode for $name {
+            fn get_start_index(&self) -> u32 {
+                if let Some(v) = self.0.first() {
+                    v.get_start_index()
+                } else {
+                    0
+                }
+            }
 
-        //     fn get_end_index(&self) -> u32 {
-        //         if let Some(v) = self.0.last() {
-        //             v.get_end_index()
-        //         } else {
-        //             0
-        //         }
-        //     }
-        // }
+            fn get_end_index(&self) -> u32 {
+                if let Some(v) = self.0.last() {
+                    v.get_end_index()
+                } else {
+                    0
+                }
+            }
+        }
     };
 }

@@ -1,6 +1,8 @@
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
-use crate::{TreeNode, TreeStr};
+#[cfg(feature = "lsp-types")]
+use crate::{create_text_edit, TextFormatter};
+use crate::{FormatOptions, TreeNode, TreeStr};
 
 pub const DEFINE_STR: &str = "#define";
 pub const INCLUDE_STR: &str = "#include";
@@ -9,28 +11,6 @@ pub const IFNDEF_STR: &str = "#ifndef";
 pub const ELSEIFDEF_STR: &str = "#elseifdef";
 pub const ELSE_STR: &str = "#else";
 pub const ENDIF_STR: &str = "#endif";
-
-#[cfg(feature = "lsp-types")]
-fn create_text_edit(
-    new_text: String,
-    line: u32,
-    start_index: u32,
-    end_index: u32,
-) -> lsp_types::TextEdit {
-    lsp_types::TextEdit {
-        range: lsp_types::Range {
-            start: lsp_types::Position {
-                line,
-                character: start_index,
-            },
-            end: lsp_types::Position {
-                line: line,
-                character: end_index,
-            },
-        },
-        new_text,
-    }
-}
 
 #[derive(Debug)]
 pub enum Value {
@@ -248,24 +228,6 @@ impl TryFrom<VariableString> for Variable {
 }
 
 vec_wrapper!(VariableStrings, VariableString);
-
-impl TreeNode for VariableStrings {
-    fn get_start_index(&self) -> u32 {
-        if let Some(v) = self.0.first() {
-            v.get_start_index()
-        } else {
-            0
-        }
-    }
-
-    fn get_end_index(&self) -> u32 {
-        if let Some(v) = self.0.last() {
-            v.get_end_index()
-        } else {
-            0
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Quote {
@@ -841,11 +803,13 @@ impl IfDefBranch {
             IfDefBranch::EndIf { line, .. } => *line,
         }
     }
+}
 
-    #[cfg(feature = "lsp-types")]
+#[cfg(feature = "lsp-types")]
+impl TextFormatter for IfDefBranch {
     /// Create TextEdits for the macros. This should only manipulate the
     /// whitespace in the line.
-    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+    fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
         use std::ops::Deref;
 
         let mut lines = Vec::new();
@@ -982,24 +946,6 @@ impl ToString for IfDefBranch {
 
 vec_wrapper!(IfNotDefClauses, VariableStrings);
 
-impl TreeNode for IfNotDefClauses {
-    fn get_start_index(&self) -> u32 {
-        if let Some(v) = self.0.first() {
-            v.get_start_index()
-        } else {
-            0
-        }
-    }
-
-    fn get_end_index(&self) -> u32 {
-        if let Some(v) = self.0.last() {
-            v.get_end_index()
-        } else {
-            0
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum IfNotDefBranch {
     Else {
@@ -1038,11 +984,13 @@ impl IfNotDefBranch {
             IfNotDefBranch::EndIf { line, .. } => *line,
         }
     }
+}
 
-    #[cfg(feature = "lsp-types")]
+#[cfg(feature = "lsp-types")]
+impl TextFormatter for IfNotDefBranch {
     /// Create TextEdits for the macros. This should only manipulate the
     /// whitespace in the line.
-    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+    fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
         use std::ops::Deref;
 
         let mut lines = Vec::new();
@@ -1177,31 +1125,6 @@ pub enum Line {
     },
 }
 
-pub struct FormatOptions {
-    pub insert_spaces: bool,
-    pub tab_size: u32,
-}
-
-#[cfg(feature = "lsp-types")]
-impl From<lsp_types::FormattingOptions> for FormatOptions {
-    fn from(value: lsp_types::FormattingOptions) -> Self {
-        FormatOptions {
-            insert_spaces: value.insert_spaces,
-            tab_size: value.tab_size,
-        }
-    }
-}
-
-#[cfg(feature = "lsp-types")]
-impl From<&lsp_types::FormattingOptions> for FormatOptions {
-    fn from(value: &lsp_types::FormattingOptions) -> Self {
-        FormatOptions {
-            insert_spaces: value.insert_spaces,
-            tab_size: value.tab_size,
-        }
-    }
-}
-
 impl Line {
     pub fn get_line_number(&self) -> u32 {
         match self {
@@ -1226,8 +1149,85 @@ impl Line {
         }
     }
 
-    #[cfg(feature = "lsp-types")]
-    pub fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            Line::Comment {
+                comment,
+                line,
+                line_end_index,
+            } => todo!(),
+            Line::Macro {
+                macro_type,
+                comment,
+                line,
+                line_end_index,
+                indent,
+            } => todo!(),
+            Line::Variable { variable, line } => todo!(),
+            Line::Error {
+                start_line,
+                end_line,
+            } => todo!(),
+            Line::EndOfLine { line, index } => todo!(),
+        }
+    }
+}
+
+impl TreeNode for Line {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        match self {
+            Line::Comment {
+                comment,
+                line: _,
+                line_end_index: _,
+            } => comment.get_start_index(),
+            Line::Macro {
+                macro_type,
+                comment: _,
+                line: _,
+                line_end_index: _,
+                indent: _,
+            } => macro_type.get_start_index(),
+            Line::Variable { variable, line: _ } => variable.get_start_index(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => 0,
+            Line::EndOfLine { line: _, index } => *index,
+        }
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        match self {
+            Line::Comment {
+                comment,
+                line: _,
+                line_end_index: _,
+            } => comment.get_end_index(),
+            Line::Macro {
+                macro_type,
+                comment: _,
+                line: _,
+                line_end_index: _,
+                indent: _,
+            } => macro_type.get_end_index(),
+            Line::Variable { variable, line: _ } => variable.get_end_index(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => 0,
+            Line::EndOfLine { line: _, index } => *index,
+        }
+    }
+}
+
+#[cfg(feature = "lsp-types")]
+impl TextFormatter for Line {
+    fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit> {
         match self {
             Line::Macro {
                 macro_type,

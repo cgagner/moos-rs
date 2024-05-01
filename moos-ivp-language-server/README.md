@@ -71,4 +71,10 @@ MOOS Mission files, IvP Behavior files, and NSPlug template files.
 
 ## TODO
 
-1. Work on CI/CD, packaging, and releases.
+### MVP
+
+List of items until we have a minimum viable product for others to start
+testing with. 
+
+* [ ] Work on CI/CD, packaging, and releases.
+* [ ] BHV Semantic highlighting

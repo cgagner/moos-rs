@@ -12,12 +12,11 @@ use moos_parser::{
         error::{PlugParseError, PlugParseErrorKind},
         lexer::{State, Token},
         tree::{
-            FormatOptions, IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines,
-            MacroCondition, MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings,
-            ENDIF_STR,
+            IfDefBranch, IfNotDefBranch, IncludePath, IncludeTag, Line, Lines, MacroCondition,
+            MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings, ENDIF_STR,
         },
     },
-    ParseError, PlugParser, TreeNode,
+    FormatOptions, ParseError, PlugParser, TextFormatter, TreeNode,
 };
 use tracing::{debug, error, info, trace, warn};
 

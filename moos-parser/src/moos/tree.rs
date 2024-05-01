@@ -12,6 +12,35 @@ pub enum Value {
     Variable(Variable),
 }
 
+impl Value {
+    /// Get the range in the line for the value
+    #[inline]
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            Value::Boolean(_, _, range) => range,
+            Value::Integer(_, _, range) => range,
+            Value::Float(_, _, range) => range,
+            Value::String(_, range) => range,
+            Value::Quote(quote) => quote.get_token_range(),
+            Value::Variable(variable) => variable.get_token_range(),
+        }
+    }
+}
+
+impl TreeNode for Value {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
 impl ToString for Value {
     fn to_string(&self) -> String {
         match self {
@@ -50,6 +79,33 @@ pub enum Variable {
     Regular { text: TreeStr, range: TokenRange },
     Partial { text: TreeStr, range: TokenRange },
 }
+
+impl Variable {
+    pub fn get_text(&self) -> &str {
+        match self {
+            Variable::Regular { text, range: _ } | Variable::Partial { text, range: _ } => text,
+        }
+    }
+
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            Variable::Regular { text: _, range } | Variable::Partial { text: _, range } => range,
+        }
+    }
+}
+
+impl TreeNode for Variable {
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
 impl ToString for Variable {
     fn to_string(&self) -> String {
         match self {
@@ -80,6 +136,29 @@ impl VariableString {
             VariableString::String(_, _) => false,
             VariableString::Variable(_) => true,
         }
+    }
+
+    /// Get the range of the VariableString in the line
+    #[inline]
+    fn get_token_range(&self) -> &TokenRange {
+        match self {
+            VariableString::String(_, range) => range,
+            VariableString::Variable(variable) => variable.get_token_range(),
+        }
+    }
+}
+
+impl TreeNode for VariableString {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
     }
 }
 
@@ -118,6 +197,26 @@ pub struct Quote {
     pub range: TokenRange,
 }
 
+impl Quote {
+    fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl TreeNode for Quote {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.range.start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.range.end
+    }
+}
+
 impl ToString for Quote {
     fn to_string(&self) -> String {
         return format!("\"{}\"", self.content.to_string());
@@ -136,6 +235,24 @@ pub struct Comment {
     pub range: TokenRange,
 }
 
+impl Comment {
+    /// Get the range in the line for the Comment
+    #[inline]
+    pub fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl TreeNode for Comment {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
 impl ToString for Comment {
     fn to_string(&self) -> String {
         format!("// {}", self.text)
@@ -148,6 +265,22 @@ pub struct Assignment {
     pub name: VariableStrings,
     pub value: Values,
     pub comment: Option<Comment>,
+}
+
+impl TreeNode for Assignment {
+    fn get_start_index(&self) -> u32 {
+        self.name.get_start_index()
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(comment) = &self.comment {
+            comment.get_end_index()
+        } else if !self.value.is_empty() {
+            self.value.get_end_index()
+        } else {
+            self.name.get_end_index()
+        }
+    }
 }
 
 impl ToString for Assignment {
@@ -188,6 +321,20 @@ pub struct ProcessConfig {
     /// Lines inside of the ProcessConfig block. This should throw an error
     /// if a ProcessConfig is found inside another ProcessConfig
     pub body: Lines,
+}
+
+impl TreeNode for ProcessConfig {
+    fn get_start_index(&self) -> u32 {
+        self.process_name.get_start_index()
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(comment) = &self.open_curly_comment {
+            comment.get_end_index()
+        } else {
+            self.open_curly_index
+        }
+    }
 }
 
 impl ToString for ProcessConfig {
@@ -265,6 +412,60 @@ impl Line {
                 end_line: _,
             } => *start_line,
             Line::EndOfLine { line, index: _ } => *line,
+        }
+    }
+}
+
+impl TreeNode for Line {
+    fn get_start_index(&self) -> u32 {
+        match self {
+            Line::Comment { comment, line: _ } => comment.get_start_index(),
+            Line::Assignment {
+                assignment,
+                line: _,
+            } => assignment.get_start_index(),
+            Line::Define {
+                assignment: _,
+                line: _,
+                range,
+            } => range.start,
+            Line::ProcessConfig {
+                process_config: _,
+                line: _,
+                range,
+            } => range.start,
+            Line::Variable { variable, line: _ } => variable.get_start_index(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => 0,
+            Line::EndOfLine { line: _, index } => *index,
+        }
+    }
+
+    fn get_end_index(&self) -> u32 {
+        match self {
+            Line::Comment { comment, line: _ } => comment.get_end_index(),
+            Line::Assignment {
+                assignment,
+                line: _,
+            } => assignment.get_end_index(),
+            Line::Define {
+                assignment,
+                line: _,
+                range: _,
+            } => assignment.get_end_index(),
+            Line::ProcessConfig {
+                process_config,
+                line: _,
+                range: _,
+            } => process_config.get_end_index(),
+            Line::Variable { variable, line: _ } => variable.get_end_index(),
+            Line::Error {
+                start_line: _,
+                end_line: _,
+            } => 0,
+            Line::EndOfLine { line: _, index } => *index,
         }
     }
 }

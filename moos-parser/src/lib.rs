@@ -61,6 +61,60 @@ pub trait TreeNode: ToString {
     }
 }
 
+#[cfg(feature = "lsp-types")]
+fn create_text_edit(
+    new_text: String,
+    line: u32,
+    start_index: u32,
+    end_index: u32,
+) -> lsp_types::TextEdit {
+    lsp_types::TextEdit {
+        range: lsp_types::Range {
+            start: lsp_types::Position {
+                line,
+                character: start_index,
+            },
+            end: lsp_types::Position {
+                line: line,
+                character: end_index,
+            },
+        },
+        new_text,
+    }
+}
+
+pub struct FormatOptions {
+    pub insert_spaces: bool,
+    pub tab_size: u32,
+}
+
+#[cfg(feature = "lsp-types")]
+impl From<lsp_types::FormattingOptions> for FormatOptions {
+    fn from(value: lsp_types::FormattingOptions) -> Self {
+        FormatOptions {
+            insert_spaces: value.insert_spaces,
+            tab_size: value.tab_size,
+        }
+    }
+}
+
+#[cfg(feature = "lsp-types")]
+impl From<&lsp_types::FormattingOptions> for FormatOptions {
+    fn from(value: &lsp_types::FormattingOptions) -> Self {
+        FormatOptions {
+            insert_spaces: value.insert_spaces,
+            tab_size: value.tab_size,
+        }
+    }
+}
+
+#[cfg(feature = "lsp-types")]
+pub trait TextFormatter {
+    /// Create TextEdits for the macros. This should only manipulate the
+    /// whitespace in the line.
+    fn format(&self, format_options: &FormatOptions, level: u32) -> Vec<lsp_types::TextEdit>;
+}
+
 #[cfg(test)]
 mod tests {
 
