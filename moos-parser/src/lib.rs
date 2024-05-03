@@ -1,3 +1,5 @@
+use lexers::TokenRange;
+
 #[macro_use]
 extern crate lalrpop_util;
 
@@ -58,6 +60,38 @@ pub trait TreeNode: ToString {
     #[inline]
     fn is_inside(&self, index: u32) -> bool {
         index >= self.get_start_index() && index <= self.get_end_index()
+    }
+}
+
+#[derive(Debug)]
+pub struct Quote<V: ToString> {
+    pub content: V,
+    pub range: TokenRange,
+}
+
+impl<V: ToString> Quote<V> {
+    fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl<V: ToString> TreeNode for Quote<V> {
+    /// Get the start index in the line for the value
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.range.start
+    }
+
+    /// Get the end index in the line for the value
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.range.end
+    }
+}
+
+impl<V: ToString> ToString for Quote<V> {
+    fn to_string(&self) -> String {
+        return format!("\"{}\"", self.content.to_string());
     }
 }
 

@@ -12,6 +12,14 @@ pub const ELSEIFDEF_STR: &str = "#elseifdef";
 pub const ELSE_STR: &str = "#else";
 pub const ENDIF_STR: &str = "#endif";
 
+pub type Quote = crate::Quote<Values>;
+
+impl From<Quote> for Value {
+    fn from(value: Quote) -> Self {
+        Self::Quote(value)
+    }
+}
+
 #[derive(Debug)]
 pub enum Value {
     Boolean(bool, TreeStr, TokenRange),
@@ -228,44 +236,6 @@ impl TryFrom<VariableString> for Variable {
 }
 
 vec_wrapper!(VariableStrings, VariableString);
-
-#[derive(Debug)]
-pub struct Quote {
-    pub content: Values,
-    pub range: TokenRange,
-}
-
-impl Quote {
-    fn get_token_range(&self) -> &TokenRange {
-        &self.range
-    }
-}
-
-impl TreeNode for Quote {
-    /// Get the start index in the line for the value
-    #[inline]
-    fn get_start_index(&self) -> u32 {
-        self.range.start
-    }
-
-    /// Get the end index in the line for the value
-    #[inline]
-    fn get_end_index(&self) -> u32 {
-        self.range.end
-    }
-}
-
-impl ToString for Quote {
-    fn to_string(&self) -> String {
-        return format!("\"{}\"", self.content.to_string());
-    }
-}
-
-impl From<Quote> for Value {
-    fn from(value: Quote) -> Self {
-        Self::Quote(value)
-    }
-}
 
 #[derive(Debug)]
 pub struct Comment {
