@@ -1096,29 +1096,6 @@ impl Line {
             Line::EndOfLine { line, index: _ } => *line,
         }
     }
-
-    fn get_token_range(&self) -> &TokenRange {
-        match self {
-            Line::Comment {
-                comment,
-                line,
-                line_end_index,
-            } => todo!(),
-            Line::Macro {
-                macro_type,
-                comment,
-                line,
-                line_end_index,
-                indent,
-            } => todo!(),
-            Line::Variable { variable, line } => todo!(),
-            Line::Error {
-                start_line,
-                end_line,
-            } => todo!(),
-            Line::EndOfLine { line, index } => todo!(),
-        }
-    }
 }
 
 impl TreeNode for Line {
