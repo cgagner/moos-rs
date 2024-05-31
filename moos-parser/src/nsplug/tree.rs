@@ -12,6 +12,14 @@ pub const ELSEIFDEF_STR: &str = "#elseifdef";
 pub const ELSE_STR: &str = "#else";
 pub const ENDIF_STR: &str = "#endif";
 
+#[derive(Debug, Default)]
+pub struct PlugComment;
+
+impl crate::CommentMarker for PlugComment {
+    const COMMENT_MARKER: &'static str = "//";
+}
+pub type Comment = crate::Comment<PlugComment>;
+
 pub type Quote = crate::Quote<Values>;
 
 impl From<Quote> for Value {
@@ -236,36 +244,6 @@ impl TryFrom<VariableString> for Variable {
 }
 
 vec_wrapper!(VariableStrings, VariableString);
-
-#[derive(Debug)]
-pub struct Comment {
-    pub text: TreeStr,
-    pub range: TokenRange,
-}
-
-impl Comment {
-    /// Get the range in the line for the Comment
-    #[inline]
-    pub fn get_token_range(&self) -> &TokenRange {
-        &self.range
-    }
-}
-
-impl TreeNode for Comment {
-    fn get_start_index(&self) -> u32 {
-        self.get_token_range().start
-    }
-
-    fn get_end_index(&self) -> u32 {
-        self.get_token_range().end
-    }
-}
-
-impl ToString for Comment {
-    fn to_string(&self) -> String {
-        format!("// {}", self.text)
-    }
-}
 
 #[derive(Debug)]
 pub enum IncludePath {

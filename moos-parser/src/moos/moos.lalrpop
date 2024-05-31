@@ -62,7 +62,7 @@ Quote: tree::Quote = {
 }
 
 Comment: tree::Comment = {
-    <l:@L> <text:"Comment"> <r:@R> => tree::Comment{text: text.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Comment`")},
+    <l:@L> <text:"Comment"> <r:@R> => tree::Comment::new(text.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Comment`")),
 }
 
 Assignment: tree::Assignment = {

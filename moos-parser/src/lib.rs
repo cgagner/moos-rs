@@ -1,3 +1,5 @@
+use std::{fmt::Display, marker::PhantomData};
+
 use lexers::TokenRange;
 
 #[macro_use]
@@ -60,6 +62,49 @@ pub trait TreeNode: ToString {
     #[inline]
     fn is_inside(&self, index: u32) -> bool {
         index >= self.get_start_index() && index <= self.get_end_index()
+    }
+}
+
+pub trait CommentMarker {
+    const COMMENT_MARKER: &'static str;
+}
+
+#[derive(Debug)]
+pub struct Comment<T: CommentMarker> {
+    pub text: TreeStr,
+    pub range: TokenRange,
+    _phantom: PhantomData<T>,
+}
+
+impl<T: CommentMarker> Comment<T> {
+    pub fn new(text: TreeStr, range: TokenRange) -> Self {
+        Self {
+            text,
+            range,
+            _phantom: PhantomData::default(),
+        }
+    }
+
+    /// Get the range in the line for the Comment
+    #[inline]
+    pub fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl<T: CommentMarker> TreeNode for Comment<T> {
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    fn get_end_index(&self) -> u32 {
+        self.get_token_range().end
+    }
+}
+
+impl<T: CommentMarker> ToString for Comment<T> {
+    fn to_string(&self) -> String {
+        format!("{} {}", T::COMMENT_MARKER, self.text)
     }
 }
 
