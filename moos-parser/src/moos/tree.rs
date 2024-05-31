@@ -1,16 +1,17 @@
+use crate::base::{TreeNode, VariableMarker};
 use crate::lexers::TokenRange;
-use crate::{vec_wrapper, VariableMarker};
-use crate::{TreeNode, TreeStr};
+use crate::vec_wrapper;
+use crate::TreeStr;
 
 #[derive(Debug)]
 pub struct PlugComment;
 
-impl crate::CommentMarker for PlugComment {
+impl crate::base::CommentMarker for PlugComment {
     const COMMENT_MARKER: &'static str = "//";
 }
-pub type Comment = crate::Comment<PlugComment>;
+pub type Comment = crate::base::Comment<PlugComment>;
 
-pub type Quote = crate::Quote<Values>;
+pub type Quote = crate::base::Quote<Values>;
 
 impl From<Quote> for Value {
     fn from(value: Quote) -> Self {
@@ -18,11 +19,11 @@ impl From<Quote> for Value {
     }
 }
 
-pub type Value = crate::Value<Variable, Values>;
+pub type Value = crate::base::Value<Variable, Values>;
 // Declares a new struct Values that wraps a Vec<Value>
 vec_wrapper!(Values, Value);
 
-pub type VariableString = crate::VariableString<Variable>;
+pub type VariableString = crate::base::VariableString<Variable>;
 vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug, Clone)]

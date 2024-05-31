@@ -1,8 +1,9 @@
+use crate::base::{TreeNode, VariableMarker};
+use crate::lexers::TokenRange;
 use crate::vec_wrapper;
 #[cfg(feature = "lsp-types")]
 use crate::{create_text_edit, TextFormatter};
-use crate::{lexers::TokenRange, VariableMarker};
-use crate::{FormatOptions, TreeNode, TreeStr};
+use crate::{FormatOptions, TreeStr};
 
 pub const DEFINE_STR: &str = "#define";
 pub const INCLUDE_STR: &str = "#include";
@@ -15,12 +16,12 @@ pub const ENDIF_STR: &str = "#endif";
 #[derive(Debug, Default)]
 pub struct PlugComment;
 
-impl crate::CommentMarker for PlugComment {
+impl crate::base::CommentMarker for PlugComment {
     const COMMENT_MARKER: &'static str = "//";
 }
-pub type Comment = crate::Comment<PlugComment>;
+pub type Comment = crate::base::Comment<PlugComment>;
 
-pub type Quote = crate::Quote<Values>;
+pub type Quote = crate::base::Quote<Values>;
 
 impl From<Quote> for Value {
     fn from(value: Quote) -> Self {
@@ -28,11 +29,11 @@ impl From<Quote> for Value {
     }
 }
 
-pub type Value = crate::Value<Variable, Values>;
+pub type Value = crate::base::Value<Variable, Values>;
 // Declares a new struct Values that wraps a Vec<Value>
 vec_wrapper!(Values, Value);
 
-pub type VariableString = crate::VariableString<Variable>;
+pub type VariableString = crate::base::VariableString<Variable>;
 vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug, Clone)]

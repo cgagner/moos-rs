@@ -6,6 +6,7 @@ use lsp_types::{
     InlayHintLabel, Position, TextEdit,
 };
 use moos_parser::{
+    base::TreeNode,
     lexers::{self, Location, TokenMap, TokenRange},
     nsplug::{
         self,
@@ -16,7 +17,7 @@ use moos_parser::{
             MacroDefinition, MacroType, Quote, Values, Variable, VariableStrings, ENDIF_STR,
         },
     },
-    FormatOptions, ParseError, PlugParser, TextFormatter, TreeNode,
+    FormatOptions, ParseError, PlugParser, TextFormatter,
 };
 use tracing::{debug, error, info, trace, warn};
 

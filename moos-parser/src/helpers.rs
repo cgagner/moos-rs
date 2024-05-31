@@ -143,7 +143,7 @@ macro_rules! vec_wrapper {
             }
         }
 
-        impl crate::TreeNode for $name {
+        impl crate::base::TreeNode for $name {
             fn get_start_index(&self) -> u32 {
                 if let Some(v) = self.0.first() {
                     v.get_start_index()
