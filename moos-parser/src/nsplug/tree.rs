@@ -1,7 +1,7 @@
-use crate::lexers::TokenRange;
 use crate::vec_wrapper;
 #[cfg(feature = "lsp-types")]
 use crate::{create_text_edit, TextFormatter};
+use crate::{lexers::TokenRange, VariableMarker};
 use crate::{FormatOptions, TreeNode, TreeStr};
 
 pub const DEFINE_STR: &str = "#define";
@@ -28,77 +28,12 @@ impl From<Quote> for Value {
     }
 }
 
-#[derive(Debug)]
-pub enum Value {
-    Boolean(bool, TreeStr, TokenRange),
-    Integer(i64, TreeStr, TokenRange),
-    Float(f64, TreeStr, TokenRange),
-    String(TreeStr, TokenRange),
-    Quote(Quote),
-    Variable(Variable),
-}
-
-impl Value {
-    /// Get the range in the line for the value
-    #[inline]
-    fn get_token_range(&self) -> &TokenRange {
-        match self {
-            Value::Boolean(_, _, range) => range,
-            Value::Integer(_, _, range) => range,
-            Value::Float(_, _, range) => range,
-            Value::String(_, range) => range,
-            Value::Quote(quote) => quote.get_token_range(),
-            Value::Variable(variable) => variable.get_token_range(),
-        }
-    }
-}
-
-impl TreeNode for Value {
-    /// Get the start index in the line for the value
-    #[inline]
-    fn get_start_index(&self) -> u32 {
-        self.get_token_range().start
-    }
-
-    /// Get the end index in the line for the value
-    #[inline]
-    fn get_end_index(&self) -> u32 {
-        self.get_token_range().end
-    }
-}
-
-impl ToString for Value {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Boolean(_, value_str, _)
-            | Self::Integer(_, value_str, _)
-            | Self::Float(_, value_str, _)
-            | Self::String(value_str, _) => (*value_str).to_string(),
-            Self::Quote(quote) => quote.to_string(),
-            Self::Variable(variable) => variable.to_string(),
-        }
-    }
-}
-
-impl From<Variable> for Value {
-    fn from(value: Variable) -> Self {
-        Self::Variable(value)
-    }
-}
-
-impl TryFrom<Value> for Variable {
-    type Error = ();
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value {
-            Value::Variable(variable) => Ok(variable),
-            _ => Err(()),
-        }
-    }
-}
-
+pub type Value = crate::Value<Variable, Values>;
 // Declares a new struct Values that wraps a Vec<Value>
 vec_wrapper!(Values, Value);
+
+pub type VariableString = crate::VariableString<Variable>;
+vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug, Clone)]
 pub enum Variable {
@@ -117,7 +52,9 @@ impl Variable {
             | Variable::PartialUpper { text, range: _ } => text,
         }
     }
+}
 
+impl VariableMarker for Variable {
     fn get_token_range(&self) -> &TokenRange {
         match self {
             Variable::Regular { text: _, range }
@@ -151,84 +88,14 @@ impl ToString for Variable {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum VariableString {
-    String(TreeStr, TokenRange),
-    Variable(Variable),
-}
+impl TryFrom<Value> for Variable {
+    type Error = ();
 
-impl VariableString {
-    #[inline]
-    pub fn is_string(&self) -> bool {
-        match *self {
-            VariableString::String(_, _) => true,
-            VariableString::Variable(_) => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_variable(&self) -> bool {
-        match *self {
-            VariableString::String(_, _) => false,
-            VariableString::Variable(_) => true,
-        }
-    }
-
-    /// Get the range of the VariableString in the line
-    #[inline]
-    fn get_token_range(&self) -> &TokenRange {
-        match self {
-            VariableString::String(_, range) => range,
-            VariableString::Variable(variable) => variable.get_token_range(),
-        }
-    }
-}
-
-impl TreeNode for VariableString {
-    /// Get the start index in the line for the value
-    #[inline]
-    fn get_start_index(&self) -> u32 {
-        self.get_token_range().start
-    }
-
-    /// Get the end index in the line for the value
-    #[inline]
-    fn get_end_index(&self) -> u32 {
-        self.get_token_range().end
-    }
-}
-
-impl ToString for VariableString {
-    fn to_string(&self) -> String {
-        match self {
-            Self::String(value_str, _) => (*value_str).to_string(),
-            // We won't evaluate plug variables as part of this parser.
-            Self::Variable(variable) => variable.to_string(),
-        }
-    }
-}
-
-impl From<Value> for VariableString {
-    fn from(value: Value) -> Self {
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Boolean(_, text, range)
-            | Value::Integer(_, text, range)
-            | Value::Float(_, text, range)
-            | Value::String(text, range) => VariableString::String(text, range),
-            Value::Quote(quote) => {
-                tracing::error!(
-                    "Calling From<Value> to VariableString with a Quote is not supported."
-                );
-                VariableString::String("".into(), quote.range)
-            }
-            Value::Variable(variable) => VariableString::Variable(variable),
+            Value::Variable(variable) => Ok(variable),
+            _ => Err(()),
         }
-    }
-}
-
-impl From<Variable> for VariableString {
-    fn from(value: Variable) -> Self {
-        Self::Variable(value)
     }
 }
 
@@ -242,8 +109,6 @@ impl TryFrom<VariableString> for Variable {
         }
     }
 }
-
-vec_wrapper!(VariableStrings, VariableString);
 
 #[derive(Debug)]
 pub enum IncludePath {
