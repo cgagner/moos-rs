@@ -1,10 +1,3 @@
-use std::{fmt::Display, marker::PhantomData};
-
-use lexers::TokenRange;
-
-#[macro_use]
-extern crate lalrpop_util;
-
 pub mod ast;
 pub mod base;
 pub mod helpers;
@@ -105,7 +98,7 @@ mod tests {
         use tracing::level_filters::LevelFilter;
         use tracing_subscriber::fmt::writer::BoxMakeWriter;
         use tracing_subscriber::prelude::*;
-        use tracing_subscriber::{fmt, EnvFilter, Registry};
+        use tracing_subscriber::{EnvFilter, Registry};
         let filter = EnvFilter::builder()
             .with_default_directive(LevelFilter::INFO.into())
             .from_env()?
@@ -161,29 +154,6 @@ mod tests {
         // uMemWatch config block
 
         "#;
-
-        let input = r#"#include <test.plug>
-        // Test Comment
-        #define MY_VARIABLE 1234
-        $(MY_VARIABLE)
-        #include "test.plug"
-        
-        #ifdef JJJJJJ 12345
-        #elseifdef JJKK
-        #else
-        #endif
-
-        #ifdef ASDF
-        name = value
-        
-        #include "test.txt"
-        #define AS
-        
-        #endif
-
-        "#;
-
-        let input = "// This is a test\n#define FOO Appless // Comment \n\n\n\n";
 
         let lexer = PlugLexer::new(input);
         let mut state = crate::nsplug::lexer::State::default();

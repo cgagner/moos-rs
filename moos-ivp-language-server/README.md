@@ -76,5 +76,19 @@ MOOS Mission files, IvP Behavior files, and NSPlug template files.
 List of items until we have a minimum viable product for others to start
 testing with. 
 
+* [ ] Reorganize repositories
+     - moos-rs
+       - moos-parser
+       - moos
+       - moos-geodesy
+     - moos-ivp-language-server
+       - crates
+         - lsp-server-derive-macro
+         - xtask
+       - editors
+         - vscode
+         - emacs
+         - neovim
+       - src
 * [ ] Work on CI/CD, packaging, and releases.
 * [ ] BHV Semantic highlighting

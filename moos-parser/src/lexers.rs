@@ -1,9 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    num::{ParseFloatError, ParseIntError},
-};
-
-use tracing::trace;
+use std::num::{ParseFloatError, ParseIntError};
 
 // The end index is non inclusive.. I.E. it is up to, but not including the
 // end index. A token that is of size one, should have an end index one larger
