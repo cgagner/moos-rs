@@ -1,3 +1,4 @@
+pub mod behavior;
 pub mod moos;
 pub mod nsplug;
 

@@ -1,0 +1,154 @@
+use std::str::FromStr;
+use crate::lexers::{Location, TokenRange};
+use crate::behavior::error::BehaviorParseError;
+use crate::behavior::lexer::{State, Token};
+use crate::behavior::tree::{self, Line};
+use lalrpop_util::ErrorRecovery;
+
+//grammar<'input>(input: &'input str);
+grammar<'s, 'input>(state: &'s mut State<'input>, input: &'input str);
+
+pub Lines: tree::Lines = {
+    <Line*> => <>.into()
+}
+
+pub Line: Line = {
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+    <l:@L> <assignment:Assignment> <r:@R> => {
+      let e = lalrpop_util::ErrorRecovery { 
+          error: lalrpop_util::ParseError::User {
+              error: BehaviorParseError::new_unexpected_assignment(l, r)
+          },
+          dropped_tokens: vec![]
+      };
+      state.errors.push(e);
+      Line::Assignment{assignment, line: l.line}
+    },
+    Initialize => <>,
+    BehaviorBlock => <>,
+    <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    <l:@L> <error:!> <r:@R> => {
+        state.errors.push(error); 
+        Line::Error{start_line: l.line, end_line: r.line}
+    },
+}
+
+Variable: tree::Variable = {
+    <l:@L> <text:"EnvVariable"> <r:@R> => tree::Variable::Regular{text: text.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `EnvVariable`")},
+    <l:@L> <text:"PartialEnvVariable"> <r:@R> => {
+        let e = lalrpop_util::ErrorRecovery { 
+                error: lalrpop_util::ParseError::User {
+                    error: BehaviorParseError::new_missing_trailing('}', l, r)
+                },
+                dropped_tokens: vec![]
+            };
+        state.errors.push(e);
+        tree::Variable::Partial{text: text.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `PartialEnvVariable`")}
+    },
+}
+
+Value: tree::Value = {
+    <l:@L> <value:"bool"> <r:@R> => tree::Value::Boolean(value.0, value.1.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"int"> <r:@R> => tree::Value::Integer(value.0, value.1.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"float"> <r:@R> => tree::Value::Float(value.0, value.1.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <l:@L> <value:"ValueString"> <r:@R> => tree::Value::String(value.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Value`")),
+    <quote: Quote> => quote.into(),
+    <value: Variable> => value.into(),
+}
+
+VariableString: tree::VariableString = {
+    <l:@L> <value:"ValueString"> <r:@R> => tree::VariableString::String(value.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")),
+    Variable => tree::VariableString::Variable(<>),
+}
+
+VariableStrings: tree::VariableStrings = {
+    <variables: VariableString+> => variables.into()
+}
+
+Quote: tree::Quote = {
+    <l:@L> QuoteBegin <content: Value*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
+}
+
+Comment: tree::Comment = {
+    <l:@L> <text:"Comment"> <r:@R> => tree::Comment::new(text.into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `Comment`")),
+}
+
+Assignment: tree::Assignment = {
+    <name:VariableStrings> "=" <value:Value*> <comment: Comment?> "EOL" => tree::Assignment{name, value: value.into(), comment},
+}
+
+Initialize: Line = {
+    <l:@L> "initialize" <r:@R> <assignment: Assignment> => Line::Initialize{assignment, deferred: false, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize`")},
+    <l:@L> "initialize_" <r:@R> <assignment: Assignment> => Line::Initialize{assignment, deferred: true, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize_`")},
+}
+
+CommentOrEmptyLine: Line = {
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+}
+
+BehaviorBlockLine: Line = {
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+    <l:@L> <assignment:Assignment> => Line::Assignment{assignment, line: l.line},
+    Initialize => <>,
+    <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    <l:@L> <error:!> <r:@R> => {
+        state.errors.push(error); 
+        Line::Error{start_line: l.line, end_line: r.line}
+    },
+}
+
+BehaviorBlock: Line = {
+    <pl:@L> "BehaviorBlock" <pr:@R> "=" <behavior_name: VariableStrings> <behavior_block_comment: Comment?> "EOL" 
+    <prelude_comments: CommentOrEmptyLine*>
+    <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
+    <body: BehaviorBlockLine*>
+    <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
+        => Line::BehaviorBlock { 
+            behavior_block: tree::BehaviorBlock{
+                behavior_block_comment,
+                behavior_name,
+                prelude_comments: prelude_comments.into(),
+                open_curly_line: ocl.line,
+                open_curly_index: ocl.index,
+                open_curly_comment,
+                close_curly_line: ccl.line,
+                close_curly_index: ccl.index,
+                close_curly_comment,
+                body: body.into(),
+            },
+            line: pl.line,
+            range: TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `BehaviorBlock`")  
+        },
+}
+
+
+// ---------------------------------------------------------------------------
+// Token Definitions 
+// ---------------------------------------------------------------------------
+
+extern {  
+    type Location = crate::lexers::Location;
+    type Error = BehaviorParseError;
+    
+    enum Token<'input> {
+        "Comment" => Token::Comment(<&'input str>),
+        QuoteBegin => Token::QuoteBegin,
+        QuoteEnd => Token::QuoteEnd,
+        "ValueString" => Token::ValueString(<&'input str>),
+        "EOL" => Token::EOL,
+        "EnvVariable" => Token::EnvVariable(<&'input str>),
+        "PartialEnvVariable" => Token::PartialEnvVariable(<&'input str>),
+        "int" => Token::Integer(<i64>, <&'input str>),
+        "float" => Token::Float(<f64>, <&'input str>),
+        "bool" => Token::Boolean(<bool>, <&'input str>),
+        "=" => Token::AssignmentOp,
+        "initialize" => Token::InitializeKeyword,
+        "initialize_" => Token::DeferredInitializeKeyword,
+        "BehaviorBlock" => Token::BehaviorBlockKeyword,
+        "{" => Token::CurlyOpen,
+        "}" => Token::CurlyClose,
+    }
+}

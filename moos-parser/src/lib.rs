@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod base;
+pub mod behavior;
 pub mod helpers;
 pub mod lexers;
 pub mod moos;
@@ -30,6 +31,12 @@ pub type PlugLexer<'input> = nsplug::lexer::Lexer<'input>;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugParser = nsplug::nsplug::LinesParser;
+
+#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
+pub type BehaviorParser = behavior::behavior::LinesParser;
+
+#[allow(clippy::all, dead_code, unused_imports, unused_mut)]
+pub type BehaviorLexer<'input> = behavior::lexer::Lexer<'input>;
 
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type ParseError<L, T, E> = lalrpop_util::ParseError<L, T, E>;

@@ -7,17 +7,18 @@ use lsp_types::{
     InlayHintLabel, Position,
 };
 use moos_parser::{
-    lexers::{self, Location, TokenMap, TokenRange},
-    moos::{
+    base::TreeNode,
+    behavior::{
         self,
-        error::{MoosParseError, MoosParseErrorKind},
+        error::{BehaviorParseError, BehaviorParseErrorKind},
         lexer::{State, Token},
         tree::{
-            Assignment, Comment, Line, Lines, ProcessConfig, Quote, Values, Variable,
+            Assignment, BehaviorBlock, Comment, Line, Lines, Quote, Values, Variable,
             VariableStrings,
         },
     },
-    MoosParser, ParseError,
+    lexers::{self, Location, TokenMap, TokenRange},
+    BehaviorParser, ParseError,
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -27,9 +28,9 @@ pub fn parse(document: &mut Document) {
     // reference to the Document and the Result from the parser to other
     // functions.
     let text = Arc::clone(&document.text);
-    let lexer = moos_parser::MoosLexer::new(text.deref());
-    let mut state = moos_parser::moos::lexer::State::default();
-    let result = MoosParser::new().parse(&mut state, text.deref(), lexer);
+    let lexer = moos_parser::BehaviorLexer::new(text.deref());
+    let mut state = moos_parser::behavior::lexer::State::default();
+    let result = BehaviorParser::new().parse(&mut state, text.deref(), lexer);
 
     info!("Parse Results: {result:?}");
 
@@ -46,7 +47,15 @@ pub fn parse(document: &mut Document) {
     for e in state.errors {
         match e.error {
             ParseError::User { error } => match error.kind {
-                MoosParseErrorKind::MissingNewLine => {
+                BehaviorParseErrorKind::UnexpectedAssignment => {
+                    let d = new_error_diagnostic(
+                        &error.loc_start,
+                        &error.loc_end,
+                        String::from("Unexpected assignment."),
+                    );
+                    document.diagnostics.push(d);
+                }
+                BehaviorParseErrorKind::MissingNewLine => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
@@ -54,7 +63,7 @@ pub fn parse(document: &mut Document) {
                     );
                     document.diagnostics.push(d);
                 }
-                MoosParseErrorKind::MissingTrailing(c) => {
+                BehaviorParseErrorKind::MissingTrailing(c) => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
@@ -62,8 +71,8 @@ pub fn parse(document: &mut Document) {
                     );
                     document.diagnostics.push(d);
                 }
-                MoosParseErrorKind::UnexpectedSymbol(c) => {}
-                MoosParseErrorKind::UnexpectedComment(comment) => {
+                BehaviorParseErrorKind::UnexpectedSymbol(c) => {}
+                BehaviorParseErrorKind::UnexpectedComment(comment) => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
@@ -71,7 +80,7 @@ pub fn parse(document: &mut Document) {
                     );
                     document.diagnostics.push(d);
                 }
-                MoosParseErrorKind::UnknownMacro(text) => {
+                BehaviorParseErrorKind::UnknownMacro(text) => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
@@ -79,7 +88,7 @@ pub fn parse(document: &mut Document) {
                     );
                     document.diagnostics.push(d);
                 }
-                MoosParseErrorKind::MissingEndIf => {
+                BehaviorParseErrorKind::MissingEndIf => {
                     let d = new_error_diagnostic(
                         &error.loc_start,
                         &error.loc_end,
@@ -114,7 +123,7 @@ pub fn parse(document: &mut Document) {
 }
 
 fn handle_lines(document: &mut Document, lines: &Lines) {
-    use moos_parser::moos::tree::Line::*;
+    use moos_parser::behavior::tree::Line::*;
     for l in lines {
         match l {
             Comment { comment, line } => {
@@ -129,17 +138,18 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                 // TODO: Add a lookup to get the token type and modifier for the keywords
                 handle_assignment(document, *line, &assignment, TokenTypes::Macro, 0)
             }
-            ProcessConfig {
-                process_config,
+            BehaviorBlock {
+                behavior_block,
                 line,
                 range,
             } => {
-                // NOTE: A ProcessConfig inside another ProcessConfig is handled
+                // NOTE: A BehaviorBlock inside another BehaviorBlock is handled
                 // by the parser.
-                handle_process_config(document, *line, range, process_config);
+                handle_behavior_block(document, *line, range, behavior_block);
             }
-            Define {
+            Initialize {
                 assignment,
+                deferred: _,
                 line,
                 range,
             } => {
@@ -187,7 +197,7 @@ fn handle_assignment(
 fn handle_quote(document: &mut Document, line: u32, quote: &Quote) {
     // Insert all of the variables first so they take priority
     quote.content.iter().for_each(|v| match v {
-        moos::tree::Value::Variable(variable) => handle_variable(document, line, variable),
+        behavior::tree::Value::Variable(variable) => handle_variable(document, line, variable),
         _ => {}
     });
 
@@ -211,10 +221,10 @@ fn handle_variable_strings(
 ) {
     for v in values {
         match v {
-            moos::tree::VariableString::String(text, range) => {
+            behavior::tree::VariableString::String(text, range) => {
                 handle_string(document, line, text, range, string_type, string_modifiers);
             }
-            moos::tree::VariableString::Variable(variable) => {
+            behavior::tree::VariableString::Variable(variable) => {
                 handle_variable(document, line, variable);
             }
         }
@@ -241,8 +251,8 @@ fn handle_string(
 
 fn handle_variable(document: &mut Document, line: u32, variable: &Variable) {
     match variable {
-        moos::tree::Variable::Regular { text: _, range }
-        | moos::tree::Variable::Partial { text: _, range } => {
+        behavior::tree::Variable::Regular { text: _, range }
+        | behavior::tree::Variable::Partial { text: _, range } => {
             document.semantic_tokens.insert(
                 line,
                 range.clone(),
@@ -269,7 +279,7 @@ fn handle_comment(document: &mut Document, line: u32, comment: &Comment) {
 fn handle_values(document: &mut Document, line: u32, values: &Values) {
     for v in values {
         match v {
-            moos::tree::Value::Boolean(_value, _value_str, range) => {
+            behavior::tree::Value::Boolean(_value, _value_str, range) => {
                 document.semantic_tokens.insert(
                     line,
                     range.clone(),
@@ -279,7 +289,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     },
                 );
             }
-            moos::tree::Value::Integer(_value, _value_str, range) => {
+            behavior::tree::Value::Integer(_value, _value_str, range) => {
                 document.semantic_tokens.insert(
                     line,
                     range.clone(),
@@ -289,7 +299,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     },
                 );
             }
-            moos::tree::Value::Float(_value, _value_str, range) => {
+            behavior::tree::Value::Float(_value, _value_str, range) => {
                 document.semantic_tokens.insert(
                     line,
                     range.clone(),
@@ -299,55 +309,55 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     },
                 );
             }
-            moos::tree::Value::String(_text, _range) => {
+            behavior::tree::Value::String(_text, _range) => {
                 // TODO: Should we color these differently than a quoted string?
                 // For now, we'll leave these unformatted
             }
-            moos::tree::Value::Quote(quote) => handle_quote(document, line, quote),
-            moos::tree::Value::Variable(variable) => handle_variable(document, line, variable),
+            behavior::tree::Value::Quote(quote) => handle_quote(document, line, quote),
+            behavior::tree::Value::Variable(variable) => handle_variable(document, line, variable),
         }
     }
 }
 
-fn handle_process_config(
+fn handle_behavior_block(
     document: &mut Document,
     line: u32,
     range: &TokenRange,
-    process_config: &ProcessConfig,
+    behavior_block: &BehaviorBlock,
 ) {
     handle_keyword(document, line, range);
-    // TODO: Should check if the process name is in the path and display a
+    // TODO: Should check if the behavior name is in the path and display a
     // warning if it is not.
     handle_variable_strings(
         document,
         line,
-        &process_config.process_name,
+        &behavior_block.behavior_name,
         TokenTypes::Struct,
         0,
     );
 
-    if let Some(comment) = &process_config.process_config_comment {
+    if let Some(comment) = &behavior_block.behavior_block_comment {
         handle_comment(document, line, &comment);
     }
 
     // Prelude Comments
-    if !process_config.prelude_comments.is_empty() {
+    if !behavior_block.prelude_comments.is_empty() {
         // NOTE: Invalid lines are handled by the parser. This should just
         // add comments.
-        handle_lines(document, &process_config.prelude_comments);
+        handle_lines(document, &behavior_block.prelude_comments);
     }
 
     // Open Curly Comment
-    if let Some(comment) = &process_config.open_curly_comment {
-        handle_comment(document, process_config.open_curly_line, &comment);
+    if let Some(comment) = &behavior_block.open_curly_comment {
+        handle_comment(document, behavior_block.open_curly_line, &comment);
     }
 
-    // TODO: Add warning if ProcessConfig contains a define
+    // TODO: Add warning if BehaviorBlock contains a initialize
 
-    // Add folding range for ProcessConfig block
+    // Add folding range for BehaviorBlock block
     let mut folding_range = FoldingRange::default();
     folding_range.start_line = line;
-    folding_range.end_line = process_config.close_curly_line;
+    folding_range.end_line = behavior_block.close_curly_line;
     folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
     // Adding to the document will check if the folding range is valid.
     document.add_folding_range(folding_range);
@@ -355,23 +365,24 @@ fn handle_process_config(
     // Handle Body.
     // TODO: Add lookup to see if assignments contain keywords
 
-    handle_lines(document, &process_config.body);
+    handle_lines(document, &behavior_block.body);
 
-    // TODO: Need to get the correct case for the process config text
+    // TODO: This needs to be updated to copy case
+
     let inlay_text = format!(
-        "ProcessConfig = {}",
-        process_config.process_name.to_string()
+        "BehaviorBlock = {}",
+        behavior_block.behavior_name.to_string()
     );
 
     add_inlay_text(
         document,
-        process_config.close_curly_line,
-        process_config.close_curly_index + 1,
+        behavior_block.close_curly_line,
+        behavior_block.close_curly_index + 1,
         inlay_text.as_str(),
     );
 
-    if let Some(comment) = &process_config.close_curly_comment {
-        handle_comment(document, process_config.close_curly_line, &comment);
+    if let Some(comment) = &behavior_block.close_curly_comment {
+        handle_comment(document, behavior_block.close_curly_line, &comment);
     }
 }
 

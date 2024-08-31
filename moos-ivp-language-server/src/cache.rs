@@ -1,4 +1,4 @@
-use crate::parsers::{moos, nsplug};
+use crate::parsers::{behavior, moos, nsplug};
 
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionList, CompletionResponse, Diagnostic,
@@ -289,9 +289,7 @@ impl Document {
 
         match self.file_type {
             FileType::MoosMission | FileType::PlugMoosMission => moos::parse(self),
-            FileType::Behavior | FileType::PlugBehavior => {
-                // TODO: Add Behavior parser
-            }
+            FileType::Behavior | FileType::PlugBehavior => behavior::parse(self),
             FileType::Plug => {}
             FileType::Script => {}
             FileType::Manifest => {}
