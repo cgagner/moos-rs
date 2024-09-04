@@ -27,6 +27,7 @@ pub Line: Line = {
     },
     Initialize => <>,
     BehaviorBlock => <>,
+    SetBlock => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
@@ -76,6 +77,9 @@ Comment: tree::Comment = {
 
 Assignment: tree::Assignment = {
     <name:VariableStrings> "=" <value:Value*> <comment: Comment?> "EOL" => tree::Assignment{name, value: value.into(), comment},
+    // TODO: Need to handle keywords
+    // This needs to handle variable strings
+    <l:@L> "initialize" <r:@R> "=" <value:Value*> <comment: Comment?> "EOL" => tree::Assignment{name: tree::VariableString::String("initialize".into(), TokenRange::new_line(l,r).expect("Invalid token range while parsing `VariableString`")).into(), value: value.into(), comment},
 }
 
 Initialize: Line = {
@@ -124,6 +128,43 @@ BehaviorBlock: Line = {
         },
 }
 
+SetBlockLine: Line = {
+    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+    <l:@L> <assignment:Assignment> => Line::Assignment{assignment, line: l.line},
+    <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    <l:@L> <error:!> <r:@R> => {
+        state.errors.push(error); 
+        Line::Error{start_line: l.line, end_line: r.line}
+    },
+}
+
+SetBlock: Line = {
+    <pl:@L> "Set" <pr:@R> <mode_variable_name: VariableStrings> "=" <mode_value: VariableStrings> 
+    <set_block_comment: Comment?> "EOL"?
+    <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
+    <body: SetBlockLine*>
+    <ccl:@L> "}" <else_value: VariableStrings?><close_curly_comment: Comment?> "EOL"
+        => Line::SetBlock { 
+            set_block: tree::SetBlock{
+                set_block_comment: None,
+                mode_variable_name,
+                mode_value,
+                prelude_comments: Vec::new().into(), // TODO: Need to add prelude_comments back in
+                open_curly_line: ocl.line,
+                open_curly_index: ocl.index,
+                open_curly_comment,
+                close_curly_line: ccl.line,
+                close_curly_index: ccl.index,
+                close_curly_comment,
+                body: body.into(),
+                else_value,
+            },
+            line: pl.line,
+            range: TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `SetBlock`")  
+        },
+}
+
 
 // ---------------------------------------------------------------------------
 // Token Definitions 
@@ -148,6 +189,7 @@ extern {
         "initialize" => Token::InitializeKeyword,
         "initialize_" => Token::DeferredInitializeKeyword,
         "BehaviorBlock" => Token::BehaviorBlockKeyword,
+        "Set" => Token::SetBlockKeyword,
         "{" => Token::CurlyOpen,
         "}" => Token::CurlyClose,
     }

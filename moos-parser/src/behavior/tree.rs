@@ -186,6 +186,68 @@ impl ToString for BehaviorBlock {
 }
 
 #[derive(Debug)]
+pub struct SetBlock {
+    /// Comment at the end of the Set line
+    pub set_block_comment: Option<Comment>,
+    /// Mode Variable Name
+    pub mode_variable_name: VariableStrings,
+    /// Mode Value
+    pub mode_value: VariableStrings,
+    /// Comments between SetBlock line and curly brace
+    pub prelude_comments: Lines,
+    /// Line number for the opening curly brace
+    pub open_curly_line: u32,
+    /// Line number for the opening curly brace
+    pub open_curly_index: u32,
+    /// Comment after the open curly brace
+    pub open_curly_comment: Option<Comment>,
+    /// Line number of the closing curly brace
+    pub close_curly_line: u32,
+    /// Line number of the closing curly brace
+    pub close_curly_index: u32,
+    /// Comment after the close curly brace
+    pub close_curly_comment: Option<Comment>,
+    /// Lines inside of the SetBlock block. This should throw an error
+    /// if a BehaviorBlock is found inside another SetBlock
+    pub body: Lines,
+    /// Else Value
+    pub else_value: Option<VariableStrings>,
+}
+
+impl TreeNode for SetBlock {
+    fn get_start_index(&self) -> u32 {
+        self.mode_variable_name.get_start_index()
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(comment) = &self.open_curly_comment {
+            comment.get_end_index()
+        } else {
+            self.open_curly_index
+        }
+    }
+}
+
+impl ToString for SetBlock {
+    fn to_string(&self) -> String {
+        if let Some(comment) = &self.set_block_comment {
+            format!(
+                "set {} = {} {}",
+                self.mode_variable_name.to_string(),
+                self.mode_value.to_string(),
+                comment.to_string()
+            )
+        } else {
+            format!(
+                "set {} = {}",
+                self.mode_variable_name.to_string(),
+                self.mode_value.to_string()
+            )
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum Line {
     Comment {
         comment: Comment,
@@ -207,6 +269,13 @@ pub enum Line {
         /// Line of the BehaviorBlock
         line: u32,
         /// Range of the 'Behavior' keyword
+        range: TokenRange,
+    },
+    SetBlock {
+        set_block: SetBlock,
+        /// Line of the SetBlock
+        line: u32,
+        /// Range of the 'Set' keyword
         range: TokenRange,
     },
     Variable {
@@ -242,6 +311,11 @@ impl Line {
                 line,
                 range: _,
             } => *line,
+            Line::SetBlock {
+                set_block: _,
+                line,
+                range: _,
+            } => *line,
             Line::Variable { variable: _, line } => *line,
             Line::Error {
                 start_line,
@@ -268,6 +342,11 @@ impl TreeNode for Line {
             } => range.start,
             Line::BehaviorBlock {
                 behavior_block: _,
+                line: _,
+                range,
+            } => range.start,
+            Line::SetBlock {
+                set_block: _,
                 line: _,
                 range,
             } => range.start,
@@ -298,6 +377,11 @@ impl TreeNode for Line {
                 line: _,
                 range: _,
             } => behavior_block.get_end_index(),
+            Line::SetBlock {
+                set_block,
+                line: _,
+                range: _,
+            } => set_block.get_end_index(),
             Line::Variable { variable, line: _ } => variable.get_end_index(),
             Line::Error {
                 start_line: _,
@@ -333,6 +417,11 @@ impl ToString for Line {
                 line: _,
                 range: _,
             } => behavior_block.to_string(),
+            Line::SetBlock {
+                set_block,
+                line: _,
+                range: _,
+            } => set_block.to_string(),
             Line::Variable { variable, line: _ } => variable.to_string(),
             Line::Error {
                 start_line: _,

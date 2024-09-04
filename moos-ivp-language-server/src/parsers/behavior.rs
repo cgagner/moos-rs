@@ -13,7 +13,7 @@ use moos_parser::{
         error::{BehaviorParseError, BehaviorParseErrorKind},
         lexer::{State, Token},
         tree::{
-            Assignment, BehaviorBlock, Comment, Line, Lines, Quote, Values, Variable,
+            Assignment, BehaviorBlock, Comment, Line, Lines, Quote, SetBlock, Values, Variable,
             VariableStrings,
         },
     },
@@ -146,6 +146,15 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                 // NOTE: A BehaviorBlock inside another BehaviorBlock is handled
                 // by the parser.
                 handle_behavior_block(document, *line, range, behavior_block);
+            }
+            SetBlock {
+                set_block,
+                line,
+                range,
+            } => {
+                // NOTE: A SetBlock inside another SetBlock is handled
+                // by the parser.
+                handle_set_block(document, *line, range, set_block);
             }
             Initialize {
                 assignment,
@@ -369,10 +378,7 @@ fn handle_behavior_block(
 
     // TODO: This needs to be updated to copy case
 
-    let inlay_text = format!(
-        "BehaviorBlock = {}",
-        behavior_block.behavior_name.to_string()
-    );
+    let inlay_text = format!("Behavior = {}", behavior_block.behavior_name.to_string());
 
     add_inlay_text(
         document,
@@ -383,6 +389,72 @@ fn handle_behavior_block(
 
     if let Some(comment) = &behavior_block.close_curly_comment {
         handle_comment(document, behavior_block.close_curly_line, &comment);
+    }
+}
+
+fn handle_set_block(document: &mut Document, line: u32, range: &TokenRange, set_block: &SetBlock) {
+    handle_keyword(document, line, range);
+    // TODO: Should check if the behavior name is in the path and display a
+    // warning if it is not.
+    handle_variable_strings(
+        document,
+        line,
+        &set_block.mode_variable_name,
+        TokenTypes::Struct,
+        0,
+    );
+
+    if let Some(comment) = &set_block.set_block_comment {
+        handle_comment(document, line, &comment);
+    }
+
+    // Prelude Comments
+    if !set_block.prelude_comments.is_empty() {
+        // NOTE: Invalid lines are handled by the parser. This should just
+        // add comments.
+        handle_lines(document, &set_block.prelude_comments);
+    }
+
+    // Open Curly Comment
+    if let Some(comment) = &set_block.open_curly_comment {
+        handle_comment(document, set_block.open_curly_line, &comment);
+    }
+
+    // TODO: Add warning if SetBlock contains a initialize
+
+    // Add folding range for SetBlock block
+    let mut folding_range = FoldingRange::default();
+    folding_range.start_line = line;
+    folding_range.end_line = set_block.close_curly_line;
+    folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+    // Adding to the document will check if the folding range is valid.
+    document.add_folding_range(folding_range);
+
+    // Handle Body.
+    // TODO: Add lookup to see if assignments contain keywords
+
+    handle_lines(document, &set_block.body);
+
+    // NOTE: I had the inlay hints enabled, but it gets confusing when there
+    // is an else_value. I'm leaving them commented out for now since these
+    // blocks typically are that long.
+
+    // TODO: This needs to be updated to copy case
+    // let inlay_text = format!(
+    //     "Set {} = {}",
+    //     set_block.mode_variable_name.to_string(),
+    //     set_block.mode_value.to_string()
+    // );
+
+    // add_inlay_text(
+    //     document,
+    //     set_block.close_curly_line,
+    //     set_block.close_curly_index + 1,
+    //     inlay_text.as_str(),
+    // );
+
+    if let Some(comment) = &set_block.close_curly_comment {
+        handle_comment(document, set_block.close_curly_line, &comment);
     }
 }
 

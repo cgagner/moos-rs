@@ -15,6 +15,7 @@ pub type TokenQueue<'input> = VecDeque<Spanned<Token<'input>, Location, Behavior
 const DEFERRED_INITIALIZE_KEYWORD: &str = "initialize_";
 const INITIALIZE_KEYWORD: &str = "initialize";
 const BEHAVIOR_BLOCK_KEYWORD: &str = "Behavior";
+const SET_BLOCK_KEYWORD: &str = "set";
 
 #[derive(Debug, Default, Clone)]
 pub struct State<'input> {
@@ -36,6 +37,7 @@ pub enum Token<'input> {
     DeferredInitializeKeyword,
     InitializeKeyword,
     BehaviorBlockKeyword,
+    SetBlockKeyword,
     AssignmentOp,
     CurlyOpen,
     CurlyClose,
@@ -56,6 +58,7 @@ pub struct Lexer<'input> {
     char_count: usize,
     start_of_line: bool,
     found_assign_op: bool,
+    allow_curly: bool,
     trim_start: bool,
     trim_end: bool,
     token_queue: TokenQueue<'input>,
@@ -82,6 +85,7 @@ impl<'input> Lexer<'input> {
             char_count: 0,
             start_of_line: true,
             found_assign_op: false,
+            allow_curly: false,
             trim_start: true,
             trim_end: false,
             token_queue: TokenQueue::new(),
@@ -175,6 +179,7 @@ impl<'input> Lexer<'input> {
         self.char_count = i + 1;
         self.start_of_line = true;
         self.found_assign_op = false;
+        self.allow_curly = false;
         self.trim_start = true;
         self.trim_end = false;
         self.previous_index = self.get_safe_index(i + 1);
@@ -196,6 +201,7 @@ impl<'input> Lexer<'input> {
                     DEFERRED_INITIALIZE_KEYWORD,
                     Token::DeferredInitializeKeyword,
                 ),
+                (SET_BLOCK_KEYWORD, Token::SetBlockKeyword),
                 (BEHAVIOR_BLOCK_KEYWORD, Token::BehaviorBlockKeyword),
             ];
 
@@ -213,6 +219,9 @@ impl<'input> Lexer<'input> {
                     .filter(|keyword| keyword.0.eq_ignore_ascii_case(first_word));
 
                 if let Some(keyword) = iter.next() {
+                    if keyword.0 == SET_BLOCK_KEYWORD {
+                        self.allow_curly = true;
+                    }
                     // Handle block keywords
                     let new_line_index = line_index + first_word.len();
                     self.push_token(line_index, keyword.1, new_line_index);
@@ -524,7 +533,8 @@ impl<'input> Lexer<'input> {
                 || (c == '=' && !self.found_assign_op) // Assignment
                 || (c == '"') // Quote
                 || (c == '#') // Macro
-                || ((c == '{' || c == '}') && self.start_of_line) // Open/Close curly
+                || ((c == '{' || c == '}') && (self.start_of_line || self.allow_curly))
+            // Open/Close curly
         }) {
             match c {
                 '\n' => {
