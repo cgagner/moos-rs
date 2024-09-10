@@ -169,8 +169,11 @@ impl<'input> Lexer<'input> {
 
     #[inline]
     fn _handle_new_line(&mut self, i: usize) {
-        self.token_queue
-            .push_back(Ok((self.get_location(i), Token::EOL, self.get_location(i))));
+        self.token_queue.push_back(Ok((
+            self.get_location(i),
+            Token::EOL,
+            self.get_location(i + 1),
+        )));
         self.line_number += 1;
         self.char_count = i + 1;
         self.start_of_line = true;

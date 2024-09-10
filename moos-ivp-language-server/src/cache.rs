@@ -85,20 +85,20 @@ impl Into<u32> for TokenTypes {
  */
 
 pub(crate) const TOKEN_MODIFIERS: &'static [&'static SemanticTokenModifier] = &[
+    &SemanticTokenModifier::DEPRECATED,
     &SemanticTokenModifier::DECLARATION,
     &SemanticTokenModifier::DOCUMENTATION,
-    &SemanticTokenModifier::DEPRECATED,
 ];
 
-enum TokenModifiers {
+pub enum TokenModifiers {
     /// When no modifiers are needed
     None = 0,
-    /// For declarations of symbols.
-    Declaration = 0x01,
-    /// For occurrences of symbols in documentation.
-    Documentation = 0x02,
     /// For symbols that should no longer be used.
-    Deprecated = 0x04,
+    Deprecated = 0x01,
+    /// For declarations of symbols.
+    Declaration = 0x02,
+    /// For occurrences of symbols in documentation.
+    Documentation = 0x04,
 }
 
 impl Into<u32> for TokenModifiers {

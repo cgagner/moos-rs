@@ -27,6 +27,13 @@ pub Line: Line = {
     },
     Initialize => <>,
     BehaviorBlock => <>,
+    <block: Block> => {
+      Line::UnknownBlock {
+        unknown_block: block.0,
+        line: block.1.line,
+        range: TokenRange::new_line(block.1,block.2).expect(format!("Invalid token range while parsing `Block`: {:?} {:?}", block.1, block.2).as_str())
+      }
+    },
     SetBlock => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
@@ -107,14 +114,31 @@ BehaviorBlockLine: Line = {
 BehaviorBlock: Line = {
     <pl:@L> "BehaviorBlock" <pr:@R> "=" <behavior_name: VariableStrings> <behavior_block_comment: Comment?> "EOL" 
     <prelude_comments: CommentOrEmptyLine*>
-    <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
-    <body: BehaviorBlockLine*>
-    <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
+    <block: Block>
         => Line::BehaviorBlock { 
-            behavior_block: tree::BehaviorBlock{
+            behavior_block: tree::BehaviorBlock {
                 behavior_block_comment,
                 behavior_name,
                 prelude_comments: prelude_comments.into(),
+                open_curly_line: block.0.open_curly_line,
+                open_curly_index: block.0.open_curly_index,
+                open_curly_comment: block.0.open_curly_comment,
+                close_curly_line: block.0.close_curly_line,
+                close_curly_index: block.0.close_curly_index,
+                close_curly_comment: block.0.close_curly_comment,
+                body: block.0.body,
+            },
+            line: pl.line,
+            range: TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `BehaviorBlock`")  
+        },
+}
+
+Block: (tree::UnknownBlock, Location, Location) = {
+    <ocl:@L> "{" <ocr:@R> <open_curly_comment: Comment?> "EOL"
+    <body: BehaviorBlockLine*>
+    <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
+        => (
+            tree::UnknownBlock {
                 open_curly_line: ocl.line,
                 open_curly_index: ocl.index,
                 open_curly_comment,
@@ -123,9 +147,8 @@ BehaviorBlock: Line = {
                 close_curly_comment,
                 body: body.into(),
             },
-            line: pl.line,
-            range: TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `BehaviorBlock`")  
-        },
+            ocl, ocr
+        ),
 }
 
 SetBlockLine: Line = {

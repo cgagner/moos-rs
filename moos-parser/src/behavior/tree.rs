@@ -186,6 +186,45 @@ impl ToString for BehaviorBlock {
 }
 
 #[derive(Debug)]
+pub struct UnknownBlock {
+    /// Line number for the opening curly brace
+    pub open_curly_line: u32,
+    /// Line number for the opening curly brace
+    pub open_curly_index: u32,
+    /// Comment after the open curly brace
+    pub open_curly_comment: Option<Comment>,
+    /// Line number of the closing curly brace
+    pub close_curly_line: u32,
+    /// Line number of the closing curly brace
+    pub close_curly_index: u32,
+    /// Comment after the close curly brace
+    pub close_curly_comment: Option<Comment>,
+    /// Lines inside of the BehaviorBlock block. This should throw an error
+    /// if a BehaviorBlock is found inside another BehaviorBlock
+    pub body: Lines,
+}
+
+impl TreeNode for UnknownBlock {
+    fn get_start_index(&self) -> u32 {
+        self.open_curly_index
+    }
+
+    fn get_end_index(&self) -> u32 {
+        if let Some(comment) = &self.open_curly_comment {
+            comment.get_end_index()
+        } else {
+            self.open_curly_index + 1
+        }
+    }
+}
+
+impl ToString for UnknownBlock {
+    fn to_string(&self) -> String {
+        "{ .. }".to_string()
+    }
+}
+
+#[derive(Debug)]
 pub struct SetBlock {
     /// Comment at the end of the Set line
     pub set_block_comment: Option<Comment>,
@@ -271,6 +310,13 @@ pub enum Line {
         /// Range of the 'Behavior' keyword
         range: TokenRange,
     },
+    UnknownBlock {
+        unknown_block: UnknownBlock,
+        /// Line of the BehaviorBlock
+        line: u32,
+        /// Range of the open curly brace
+        range: TokenRange,
+    },
     SetBlock {
         set_block: SetBlock,
         /// Line of the SetBlock
@@ -311,6 +357,11 @@ impl Line {
                 line,
                 range: _,
             } => *line,
+            Line::UnknownBlock {
+                unknown_block: _,
+                line,
+                range: _,
+            } => *line,
             Line::SetBlock {
                 set_block: _,
                 line,
@@ -342,6 +393,11 @@ impl TreeNode for Line {
             } => range.start,
             Line::BehaviorBlock {
                 behavior_block: _,
+                line: _,
+                range,
+            } => range.start,
+            Line::UnknownBlock {
+                unknown_block: _,
                 line: _,
                 range,
             } => range.start,
@@ -377,6 +433,11 @@ impl TreeNode for Line {
                 line: _,
                 range: _,
             } => behavior_block.get_end_index(),
+            Line::UnknownBlock {
+                unknown_block,
+                line: _,
+                range: _,
+            } => unknown_block.get_end_index(),
             Line::SetBlock {
                 set_block,
                 line: _,
@@ -417,6 +478,11 @@ impl ToString for Line {
                 line: _,
                 range: _,
             } => behavior_block.to_string(),
+            Line::UnknownBlock {
+                unknown_block,
+                line: _,
+                range: _,
+            } => unknown_block.to_string(),
             Line::SetBlock {
                 set_block,
                 line: _,

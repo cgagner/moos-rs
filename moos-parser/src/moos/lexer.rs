@@ -167,8 +167,11 @@ impl<'input> Lexer<'input> {
 
     #[inline]
     fn _handle_new_line(&mut self, i: usize) {
-        self.token_queue
-            .push_back(Ok((self.get_location(i), Token::EOL, self.get_location(i))));
+        self.token_queue.push_back(Ok((
+            self.get_location(i),
+            Token::EOL,
+            self.get_location(i + 1),
+        )));
         self.line_number += 1;
         self.char_count = i + 1;
         self.start_of_line = true;
@@ -327,7 +330,7 @@ impl<'input> Lexer<'input> {
         self.token_queue.push_back(Ok((
             self.get_location(i),
             Token::AssignmentOp,
-            self.get_location(i),
+            self.get_location(i + 1),
         )));
         self.found_assign_op = true;
         self.start_of_line = false;
@@ -343,7 +346,7 @@ impl<'input> Lexer<'input> {
             }
         }
         self.token_queue
-            .push_back(Ok((self.get_location(i), token, self.get_location(i))));
+            .push_back(Ok((self.get_location(i), token, self.get_location(i + 1))));
         self.trim_start = true;
         self.trim_end = false;
         self.start_of_line = false;

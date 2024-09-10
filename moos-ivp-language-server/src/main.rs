@@ -136,9 +136,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
                         SemanticTokenType::STRUCT,
                     ],
                     token_modifiers: vec![
+                        SemanticTokenModifier::DEPRECATED,
                         SemanticTokenModifier::DECLARATION,
                         SemanticTokenModifier::DOCUMENTATION,
-                        SemanticTokenModifier::DEPRECATED,
                     ],
                 },
                 full: Some(SemanticTokensFullOptions::Bool(true)),

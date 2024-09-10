@@ -91,4 +91,5 @@ testing with.
          - neovim
        - src
 * [ ] Work on CI/CD, packaging, and releases.
-* [ ] BHV Semantic highlighting
+* [X] BHV Semantic highlighting
+      - [ ] Add support to for inactive regions

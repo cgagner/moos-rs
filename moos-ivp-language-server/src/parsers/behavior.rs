@@ -1,10 +1,10 @@
 use std::{ops::Deref, sync::Arc};
 
-use super::new_error_diagnostic;
-use crate::cache::{Document, SemanticTokenInfo, TokenTypes};
+use super::{new_error_diagnostic, new_warning_diagnostic};
+use crate::cache::{Document, SemanticTokenInfo, TokenModifiers, TokenTypes};
 use lsp_types::{
-    Diagnostic, DiagnosticSeverity, DocumentLink, FoldingRange, InlayHint, InlayHintKind,
-    InlayHintLabel, Position,
+    Diagnostic, DiagnosticSeverity, DiagnosticTag, DocumentLink, FoldingRange, InlayHint,
+    InlayHintKind, InlayHintLabel, Position,
 };
 use moos_parser::{
     base::TreeNode,
@@ -13,8 +13,8 @@ use moos_parser::{
         error::{BehaviorParseError, BehaviorParseErrorKind},
         lexer::{State, Token},
         tree::{
-            Assignment, BehaviorBlock, Comment, Line, Lines, Quote, SetBlock, Values, Variable,
-            VariableStrings,
+            Assignment, BehaviorBlock, Comment, Line, Lines, Quote, SetBlock, UnknownBlock, Values,
+            Variable, VariableStrings,
         },
     },
     lexers::{self, Location, TokenMap, TokenRange},
@@ -35,7 +35,7 @@ pub fn parse(document: &mut Document) {
     info!("Parse Results: {result:?}");
 
     if let Ok(lines) = result {
-        handle_lines(document, &lines);
+        handle_lines(document, &lines, 0);
     }
 
     state.errors.iter().for_each(|e| {
@@ -122,21 +122,27 @@ pub fn parse(document: &mut Document) {
     }
 }
 
-fn handle_lines(document: &mut Document, lines: &Lines) {
+fn handle_lines(document: &mut Document, lines: &Lines, token_modifiers: u32) {
     use moos_parser::behavior::tree::Line::*;
     for l in lines {
         match l {
             Comment { comment, line } => {
-                handle_comment(document, *line, &comment);
+                handle_comment(document, *line, &comment, token_modifiers);
             }
             Variable { variable, line } => {
                 // TODO: Add a reference to the variable
 
-                handle_variable(document, *line, &variable);
+                handle_variable(document, *line, &variable, token_modifiers);
             }
             Assignment { assignment, line } => {
                 // TODO: Add a lookup to get the token type and modifier for the keywords
-                handle_assignment(document, *line, &assignment, TokenTypes::Macro, 0)
+                handle_assignment(
+                    document,
+                    *line,
+                    &assignment,
+                    TokenTypes::Macro,
+                    token_modifiers,
+                )
             }
             BehaviorBlock {
                 behavior_block,
@@ -145,7 +151,14 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
             } => {
                 // NOTE: A BehaviorBlock inside another BehaviorBlock is handled
                 // by the parser.
-                handle_behavior_block(document, *line, range, behavior_block);
+                handle_behavior_block(document, *line, range, behavior_block, token_modifiers);
+            }
+            UnknownBlock {
+                unknown_block,
+                line,
+                range: _,
+            } => {
+                handle_unknown_block(document, *line, unknown_block, token_modifiers);
             }
             SetBlock {
                 set_block,
@@ -154,7 +167,7 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
             } => {
                 // NOTE: A SetBlock inside another SetBlock is handled
                 // by the parser.
-                handle_set_block(document, *line, range, set_block);
+                handle_set_block(document, *line, range, set_block, token_modifiers);
             }
             Initialize {
                 assignment,
@@ -162,21 +175,27 @@ fn handle_lines(document: &mut Document, lines: &Lines) {
                 line,
                 range,
             } => {
-                handle_keyword(document, *line, range);
-                handle_assignment(document, *line, assignment, TokenTypes::Variable, 0);
+                handle_keyword(document, *line, range, token_modifiers);
+                handle_assignment(
+                    document,
+                    *line,
+                    assignment,
+                    TokenTypes::Variable,
+                    token_modifiers,
+                );
             }
             _ => {}
         }
     }
 }
 
-fn handle_keyword(document: &mut Document, line: u32, range: &TokenRange) {
+fn handle_keyword(document: &mut Document, line: u32, range: &TokenRange, token_modifiers: u32) {
     document.semantic_tokens.insert(
         line,
         range.clone(),
         SemanticTokenInfo {
             token_type: TokenTypes::Keyword as u32,
-            token_modifiers: 0,
+            token_modifiers,
         },
     );
 }
@@ -186,27 +205,29 @@ fn handle_assignment(
     line: u32,
     assignment: &Assignment,
     string_type: TokenTypes,
-    string_modifiers: u32,
+    token_modifiers: u32,
 ) {
     handle_variable_strings(
         document,
         line,
         &assignment.name,
         string_type,
-        string_modifiers,
+        token_modifiers,
     );
 
-    handle_values(document, line, &assignment.value);
+    handle_values(document, line, &assignment.value, token_modifiers);
 
     if let Some(comment) = &assignment.comment {
-        handle_comment(document, line, &comment);
+        handle_comment(document, line, &comment, token_modifiers);
     }
 }
 
-fn handle_quote(document: &mut Document, line: u32, quote: &Quote) {
+fn handle_quote(document: &mut Document, line: u32, quote: &Quote, token_modifiers: u32) {
     // Insert all of the variables first so they take priority
     quote.content.iter().for_each(|v| match v {
-        behavior::tree::Value::Variable(variable) => handle_variable(document, line, variable),
+        behavior::tree::Value::Variable(variable) => {
+            handle_variable(document, line, variable, token_modifiers)
+        }
         _ => {}
     });
 
@@ -216,7 +237,7 @@ fn handle_quote(document: &mut Document, line: u32, quote: &Quote) {
         quote.range.clone(),
         SemanticTokenInfo {
             token_type: TokenTypes::String as u32,
-            token_modifiers: 0,
+            token_modifiers,
         },
     );
 }
@@ -226,15 +247,15 @@ fn handle_variable_strings(
     line: u32,
     values: &VariableStrings,
     string_type: TokenTypes,
-    string_modifiers: u32,
+    token_modifiers: u32,
 ) {
     for v in values {
         match v {
             behavior::tree::VariableString::String(text, range) => {
-                handle_string(document, line, text, range, string_type, string_modifiers);
+                handle_string(document, line, text, range, string_type, token_modifiers);
             }
             behavior::tree::VariableString::Variable(variable) => {
-                handle_variable(document, line, variable);
+                handle_variable(document, line, variable, token_modifiers);
             }
         }
     }
@@ -258,7 +279,7 @@ fn handle_string(
     );
 }
 
-fn handle_variable(document: &mut Document, line: u32, variable: &Variable) {
+fn handle_variable(document: &mut Document, line: u32, variable: &Variable, token_modifiers: u32) {
     match variable {
         behavior::tree::Variable::Regular { text: _, range }
         | behavior::tree::Variable::Partial { text: _, range } => {
@@ -267,25 +288,25 @@ fn handle_variable(document: &mut Document, line: u32, variable: &Variable) {
                 range.clone(),
                 SemanticTokenInfo {
                     token_type: TokenTypes::Variable as u32,
-                    token_modifiers: 0,
+                    token_modifiers,
                 },
             );
         }
     }
 }
 
-fn handle_comment(document: &mut Document, line: u32, comment: &Comment) {
+fn handle_comment(document: &mut Document, line: u32, comment: &Comment, token_modifiers: u32) {
     document.semantic_tokens.insert(
         line,
         comment.range.clone(),
         SemanticTokenInfo {
             token_type: TokenTypes::Comment as u32,
-            token_modifiers: 0,
+            token_modifiers,
         },
     );
 }
 
-fn handle_values(document: &mut Document, line: u32, values: &Values) {
+fn handle_values(document: &mut Document, line: u32, values: &Values, token_modifiers: u32) {
     for v in values {
         match v {
             behavior::tree::Value::Boolean(_value, _value_str, range) => {
@@ -294,7 +315,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     range.clone(),
                     SemanticTokenInfo {
                         token_type: TokenTypes::Type as u32,
-                        token_modifiers: 0,
+                        token_modifiers,
                     },
                 );
             }
@@ -304,7 +325,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     range.clone(),
                     SemanticTokenInfo {
                         token_type: TokenTypes::Number as u32,
-                        token_modifiers: 0,
+                        token_modifiers,
                     },
                 );
             }
@@ -314,7 +335,7 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                     range.clone(),
                     SemanticTokenInfo {
                         token_type: TokenTypes::Number as u32,
-                        token_modifiers: 0,
+                        token_modifiers,
                     },
                 );
             }
@@ -322,8 +343,12 @@ fn handle_values(document: &mut Document, line: u32, values: &Values) {
                 // TODO: Should we color these differently than a quoted string?
                 // For now, we'll leave these unformatted
             }
-            behavior::tree::Value::Quote(quote) => handle_quote(document, line, quote),
-            behavior::tree::Value::Variable(variable) => handle_variable(document, line, variable),
+            behavior::tree::Value::Quote(quote) => {
+                handle_quote(document, line, quote, token_modifiers)
+            }
+            behavior::tree::Value::Variable(variable) => {
+                handle_variable(document, line, variable, token_modifiers)
+            }
         }
     }
 }
@@ -333,8 +358,9 @@ fn handle_behavior_block(
     line: u32,
     range: &TokenRange,
     behavior_block: &BehaviorBlock,
+    token_modifiers: u32,
 ) {
-    handle_keyword(document, line, range);
+    handle_keyword(document, line, range, token_modifiers);
     // TODO: Should check if the behavior name is in the path and display a
     // warning if it is not.
     handle_variable_strings(
@@ -342,23 +368,28 @@ fn handle_behavior_block(
         line,
         &behavior_block.behavior_name,
         TokenTypes::Struct,
-        0,
+        token_modifiers,
     );
 
     if let Some(comment) = &behavior_block.behavior_block_comment {
-        handle_comment(document, line, &comment);
+        handle_comment(document, line, &comment, token_modifiers);
     }
 
     // Prelude Comments
     if !behavior_block.prelude_comments.is_empty() {
         // NOTE: Invalid lines are handled by the parser. This should just
         // add comments.
-        handle_lines(document, &behavior_block.prelude_comments);
+        handle_lines(document, &behavior_block.prelude_comments, token_modifiers);
     }
 
     // Open Curly Comment
     if let Some(comment) = &behavior_block.open_curly_comment {
-        handle_comment(document, behavior_block.open_curly_line, &comment);
+        handle_comment(
+            document,
+            behavior_block.open_curly_line,
+            &comment,
+            token_modifiers,
+        );
     }
 
     // TODO: Add warning if BehaviorBlock contains a initialize
@@ -374,7 +405,7 @@ fn handle_behavior_block(
     // Handle Body.
     // TODO: Add lookup to see if assignments contain keywords
 
-    handle_lines(document, &behavior_block.body);
+    handle_lines(document, &behavior_block.body, token_modifiers);
 
     // TODO: This needs to be updated to copy case
 
@@ -388,12 +419,75 @@ fn handle_behavior_block(
     );
 
     if let Some(comment) = &behavior_block.close_curly_comment {
-        handle_comment(document, behavior_block.close_curly_line, &comment);
+        handle_comment(
+            document,
+            behavior_block.close_curly_line,
+            &comment,
+            token_modifiers,
+        );
     }
 }
 
-fn handle_set_block(document: &mut Document, line: u32, range: &TokenRange, set_block: &SetBlock) {
-    handle_keyword(document, line, range);
+fn handle_unknown_block(
+    document: &mut Document,
+    line: u32,
+    unknown_block: &UnknownBlock,
+    token_modifiers: u32,
+) {
+    // Open Curly Comment
+    if let Some(comment) = &unknown_block.open_curly_comment {
+        handle_comment(
+            document,
+            unknown_block.open_curly_line,
+            &comment,
+            token_modifiers,
+        );
+    }
+
+    // Add folding range for BehaviorBlock block
+    let mut folding_range = FoldingRange::default();
+    folding_range.start_line = line;
+    folding_range.end_line = unknown_block.close_curly_line - 1;
+    folding_range.kind = Some(lsp_types::FoldingRangeKind::Region);
+    // Adding to the document will check if the folding range is valid.
+    document.add_folding_range(folding_range);
+
+    handle_lines(document, &unknown_block.body, token_modifiers);
+
+    if let Some(comment) = &unknown_block.close_curly_comment {
+        handle_comment(
+            document,
+            unknown_block.close_curly_line,
+            &comment,
+            token_modifiers,
+        );
+    }
+
+    let diag_start = Location {
+        index: unknown_block.open_curly_index,
+        line: unknown_block.open_curly_line,
+    };
+    let diag_end = Location {
+        index: unknown_block.close_curly_index + 1,
+        line: unknown_block.close_curly_line,
+    };
+    let mut diagnostic_warning = new_warning_diagnostic(
+        &diag_start,
+        &diag_end,
+        "Inactive block without a behavior name.".to_string(),
+    );
+    diagnostic_warning.tags = Some(vec![DiagnosticTag::UNNECESSARY]);
+    document.diagnostics.push(diagnostic_warning);
+}
+
+fn handle_set_block(
+    document: &mut Document,
+    line: u32,
+    range: &TokenRange,
+    set_block: &SetBlock,
+    token_modifiers: u32,
+) {
+    handle_keyword(document, line, range, token_modifiers);
     // TODO: Should check if the behavior name is in the path and display a
     // warning if it is not.
     handle_variable_strings(
@@ -401,23 +495,28 @@ fn handle_set_block(document: &mut Document, line: u32, range: &TokenRange, set_
         line,
         &set_block.mode_variable_name,
         TokenTypes::Struct,
-        0,
+        token_modifiers,
     );
 
     if let Some(comment) = &set_block.set_block_comment {
-        handle_comment(document, line, &comment);
+        handle_comment(document, line, &comment, token_modifiers);
     }
 
     // Prelude Comments
     if !set_block.prelude_comments.is_empty() {
         // NOTE: Invalid lines are handled by the parser. This should just
         // add comments.
-        handle_lines(document, &set_block.prelude_comments);
+        handle_lines(document, &set_block.prelude_comments, token_modifiers);
     }
 
     // Open Curly Comment
     if let Some(comment) = &set_block.open_curly_comment {
-        handle_comment(document, set_block.open_curly_line, &comment);
+        handle_comment(
+            document,
+            set_block.open_curly_line,
+            &comment,
+            token_modifiers,
+        );
     }
 
     // TODO: Add warning if SetBlock contains a initialize
@@ -433,7 +532,7 @@ fn handle_set_block(document: &mut Document, line: u32, range: &TokenRange, set_
     // Handle Body.
     // TODO: Add lookup to see if assignments contain keywords
 
-    handle_lines(document, &set_block.body);
+    handle_lines(document, &set_block.body, token_modifiers);
 
     // NOTE: I had the inlay hints enabled, but it gets confusing when there
     // is an else_value. I'm leaving them commented out for now since these
@@ -454,7 +553,12 @@ fn handle_set_block(document: &mut Document, line: u32, range: &TokenRange, set_
     // );
 
     if let Some(comment) = &set_block.close_curly_comment {
-        handle_comment(document, set_block.close_curly_line, &comment);
+        handle_comment(
+            document,
+            set_block.close_curly_line,
+            &comment,
+            token_modifiers,
+        );
     }
 }
 
