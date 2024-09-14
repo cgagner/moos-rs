@@ -78,9 +78,10 @@ testing with.
 
 * [ ] Reorganize repositories
      - moos-rs
-       - moos-parser
-       - moos
-       - moos-geodesy
+       - crates  
+          - moos-parser
+          - moos
+          - moos-geodesy
      - moos-ivp-language-server
        - crates
          - lsp-server-derive-macro
@@ -93,3 +94,5 @@ testing with.
 * [ ] Work on CI/CD, packaging, and releases.
 * [X] BHV Semantic highlighting
       - [ ] Add support to for inactive regions
+      - [ ] Add support for parsing conditions
+* [ ] Add the ability to validate files from the command line

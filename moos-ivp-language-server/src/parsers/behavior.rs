@@ -220,6 +220,29 @@ fn handle_assignment(
     if let Some(comment) = &assignment.comment {
         handle_comment(document, line, &comment, token_modifiers);
     }
+
+    if assignment.value.to_string().trim().is_empty() {
+        // TODO Add Warning
+        let diag_start = Location {
+            index: assignment.name.get_start_index(),
+            line,
+        };
+        let end_index = if let Some(comment) = &assignment.comment {
+            comment.get_end_index()
+        } else {
+            assignment.get_end_index()
+        };
+        let diag_end = Location {
+            index: end_index,
+            line,
+        };
+        let warning = new_warning_diagnostic(
+            &diag_start,
+            &diag_end,
+            "Assignment with empty string.".to_string(),
+        );
+        document.diagnostics.push(warning);
+    }
 }
 
 fn handle_quote(document: &mut Document, line: u32, quote: &Quote, token_modifiers: u32) {

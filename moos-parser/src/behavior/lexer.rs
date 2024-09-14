@@ -196,8 +196,6 @@ impl<'input> Lexer<'input> {
         }
 
         let (input, line_index) = if self.start_of_line {
-            let line_trim_start = line.trim_start();
-
             let keywords = [
                 (INITIALIZE_KEYWORD, Token::InitializeKeyword),
                 (
@@ -229,7 +227,11 @@ impl<'input> Lexer<'input> {
                     let new_line_index = line_index + first_word.len();
                     self.push_token(line_index, keyword.1, new_line_index);
 
-                    (&line[first_word.len()..], new_line_index)
+                    if let Some(pos) = line[first_word.len()..].find(|c| !char::is_whitespace(c)) {
+                        (&line[first_word.len() + pos..], new_line_index + pos)
+                    } else {
+                        (&line[first_word.len()..], new_line_index)
+                    }
                 } else {
                     (line, line_index)
                 }
