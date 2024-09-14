@@ -132,6 +132,8 @@ impl ToString for Assignment {
     }
 }
 
+vec_wrapper!(Assignments, Assignment);
+
 #[derive(Debug)]
 pub struct BehaviorBlock {
     /// Comment at the end of the BehaviorBlock line
@@ -297,7 +299,7 @@ pub enum Line {
         line: u32,
     },
     Initialize {
-        assignment: Assignment,
+        assignments: Assignments,
         deferred: bool,
         line: u32,
         /// Range of the 'initialize:' keyword
@@ -347,7 +349,7 @@ impl Line {
                 line,
             } => *line,
             Line::Initialize {
-                assignment: _,
+                assignments: _,
                 deferred: _,
                 line,
                 range: _,
@@ -386,7 +388,7 @@ impl TreeNode for Line {
                 line: _,
             } => assignment.get_start_index(),
             Line::Initialize {
-                assignment: _,
+                assignments: _,
                 deferred: _,
                 line: _,
                 range,
@@ -423,11 +425,11 @@ impl TreeNode for Line {
                 line: _,
             } => assignment.get_end_index(),
             Line::Initialize {
-                assignment,
+                assignments,
                 deferred: _,
                 line: _,
                 range: _,
-            } => assignment.get_end_index(),
+            } => assignments.get_end_index(),
             Line::BehaviorBlock {
                 behavior_block,
                 line: _,
@@ -462,15 +464,15 @@ impl ToString for Line {
                 line: _,
             } => assignment.to_string(),
             Line::Initialize {
-                assignment,
+                assignments,
                 deferred,
                 line: _,
                 range: _,
             } => {
                 if *deferred {
-                    format!("initialize_ {}", assignment.to_string())
+                    format!("initialize_ {}", assignments.to_string())
                 } else {
-                    format!("initialize {}", assignment.to_string())
+                    format!("initialize {}", assignments.to_string())
                 }
             }
             Line::BehaviorBlock {

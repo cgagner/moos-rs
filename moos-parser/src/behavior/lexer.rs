@@ -41,6 +41,7 @@ pub enum Token<'input> {
     AssignmentOp,
     CurlyOpen,
     CurlyClose,
+    Comma,
     /// End of Line
     EOL,
     /// End of File
@@ -59,6 +60,7 @@ pub struct Lexer<'input> {
     start_of_line: bool,
     found_assign_op: bool,
     allow_curly: bool,
+    allow_comma: bool,
     trim_start: bool,
     trim_end: bool,
     token_queue: TokenQueue<'input>,
@@ -86,6 +88,7 @@ impl<'input> Lexer<'input> {
             start_of_line: true,
             found_assign_op: false,
             allow_curly: false,
+            allow_comma: false,
             trim_start: true,
             trim_end: false,
             token_queue: TokenQueue::new(),
@@ -183,6 +186,7 @@ impl<'input> Lexer<'input> {
         self.start_of_line = true;
         self.found_assign_op = false;
         self.allow_curly = false;
+        self.allow_comma = false;
         self.trim_start = true;
         self.trim_end = false;
         self.previous_index = self.get_safe_index(i + 1);
@@ -222,6 +226,9 @@ impl<'input> Lexer<'input> {
                 if let Some(keyword) = iter.next() {
                     if keyword.0 == SET_BLOCK_KEYWORD {
                         self.allow_curly = true;
+                    }
+                    if keyword.0 == INITIALIZE_KEYWORD || keyword.0 == DEFERRED_INITIALIZE_KEYWORD {
+                        self.allow_comma = true;
                     }
                     // Handle block keywords
                     let new_line_index = line_index + first_word.len();
@@ -362,6 +369,25 @@ impl<'input> Lexer<'input> {
         self.previous_index = self.get_safe_index(i + 1);
     }
 
+    fn tokenize_comma(&mut self, i: usize) {
+        self.trim_end = true;
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
+            if !unhandled.is_empty() {
+                self.scan_keywords_and_values(unhandled, prev_i);
+            }
+        }
+        self.token_queue.push_back(Ok((
+            self.get_location(i),
+            Token::Comma,
+            self.get_location(i + 1),
+        )));
+        self.trim_start = true;
+        self.trim_end = false;
+        // Need to toggle the found_assign_op to allow multiple
+        self.found_assign_op = false;
+        self.start_of_line = false;
+        self.previous_index = self.get_safe_index(i + 1);
+    }
     /// Tokenize a quote.
     /// Returns true if a full quote is found; false if the end of the line
     /// or end of the file is reached without finding the matching quote.
@@ -526,7 +552,8 @@ impl<'input> Lexer<'input> {
         //   5. Behavior Block Keyword
         //   6. Open/Close Curly brace
         //   7. Assignment
-        //   8. # Macro => Skip entire line
+        //   8. Comma - For initialize, allow multiple assignments
+        //   9. # Macro => Skip entire line
         //
         // Ignore other tokens
 
@@ -539,6 +566,7 @@ impl<'input> Lexer<'input> {
                 || (c == '"') // Quote
                 || (c == '#') // Macro
                 || ((c == '{' || c == '}') && (self.start_of_line || self.allow_curly))
+                || (c == ',' && self.allow_comma)
             // Open/Close curly
         }) {
             match c {
@@ -567,6 +595,7 @@ impl<'input> Lexer<'input> {
                 '#' => self.tokenize_macro(i),
                 '{' => self.tokenize_curly_brace(i, Token::CurlyOpen),
                 '}' => self.tokenize_curly_brace(i, Token::CurlyClose),
+                ',' => self.tokenize_comma(i),
                 _ => {}
             }
         }

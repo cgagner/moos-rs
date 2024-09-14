@@ -11,7 +11,7 @@ Parser for MOOS-IvP mission files for Rust.
 - [X] Need to handle behaviors files differently
   - [ ] ~~Behaviors support # as comments~~ See Populate_BehaviorSet
   - [X] Behaviors don't support 'define:'
-  - [ ] Need to handle initialize with multiple assignments
+  - [X] Need to handle initialize with multiple assignments
   - [ ] Behaviors don't support environment variables
   - [ ] Add support for parsing/validating conditions
   - [ ] Behaviors support special variables with square brackets

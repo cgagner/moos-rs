@@ -170,19 +170,21 @@ fn handle_lines(document: &mut Document, lines: &Lines, token_modifiers: u32) {
                 handle_set_block(document, *line, range, set_block, token_modifiers);
             }
             Initialize {
-                assignment,
+                assignments,
                 deferred: _,
                 line,
                 range,
             } => {
                 handle_keyword(document, *line, range, token_modifiers);
-                handle_assignment(
-                    document,
-                    *line,
-                    assignment,
-                    TokenTypes::Variable,
-                    token_modifiers,
-                );
+                for assignment in assignments {
+                    handle_assignment(
+                        document,
+                        *line,
+                        assignment,
+                        TokenTypes::Variable,
+                        token_modifiers,
+                    );
+                }
             }
             _ => {}
         }
