@@ -162,7 +162,10 @@ impl FileType {
             }
         }
 
-        if filename.starts_with("app_") || filename.starts_with("moos_") {
+        if filename.starts_with("app_")
+            || filename.starts_with("moos_")
+            || filename.starts_with("data_")
+        {
             match extension {
                 "plug" | "def" => return Self::PlugMoosMission,
                 _ => {}
@@ -171,7 +174,7 @@ impl FileType {
 
         if filename.starts_with("bhv_") {
             match extension {
-                "plug" | "def" => return Self::PlugMoosMission,
+                "plug" | "def" => return Self::PlugBehavior,
                 _ => {}
             }
         }

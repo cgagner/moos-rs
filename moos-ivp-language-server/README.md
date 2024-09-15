@@ -96,3 +96,7 @@ testing with.
       - [ ] Add support to for inactive regions
       - [ ] Add support for parsing conditions
 * [ ] Add the ability to validate files from the command line
+* [ ] Includes that are not found should display an error or warning.
+* [ ] Includes that are found should recursively check for errors in the
+      included files. Display an error if the include has an error.
+* [ ] Add/change includes to have definitions
