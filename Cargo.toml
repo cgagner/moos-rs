@@ -4,7 +4,6 @@ members = [
   "moos",
   "moos-macros",
   "moos-parser",
-  "moos-ivp-language-server",
   # TODO:  The `moos-utils` should get moved to its own repository.
   "moos-utils/moos-monitor",
 ]
