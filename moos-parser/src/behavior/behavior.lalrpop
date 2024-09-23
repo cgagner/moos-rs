@@ -13,9 +13,9 @@ pub Lines: tree::Lines = {
 }
 
 pub Line: Line = {
-    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
-    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
-    <l:@L> <assignment:Assignment> <r:@R> "EOL" => {
+    <l:@L> END => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> END => Line::Comment{comment, line: l.line},
+    <l:@L> <assignment:Assignment> <r:@R> END => {
       let e = lalrpop_util::ErrorRecovery { 
           error: lalrpop_util::ParseError::User {
               error: BehaviorParseError::new_unexpected_assignment(l, r)
@@ -35,7 +35,7 @@ pub Line: Line = {
       }
     },
     SetBlock => <>,
-    <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    <l:@L> <variable:Variable> END => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
         Line::Error{start_line: l.line, end_line: r.line}
@@ -108,8 +108,8 @@ Assignments: tree::Assignments = {
 }
 
 Initialize: Line = {
-    <l:@L> "initialize" <r:@R> <assignments: Assignments> "EOL" => Line::Initialize{assignments, deferred: false, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize`")},
-    <l:@L> "initialize_" <r:@R> <assignments: Assignments> "EOL" => Line::Initialize{assignments, deferred: true, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize_`")},
+    <l:@L> "initialize" <r:@R> <assignments: Assignments> END => Line::Initialize{assignments, deferred: false, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize`")},
+    <l:@L> "initialize_" <r:@R> <assignments: Assignments> END => Line::Initialize{assignments, deferred: true, line: l.line, range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `initialize_`")},
 }
 
 CommentOrEmptyLine: Line = {
@@ -154,7 +154,7 @@ BehaviorBlock: Line = {
 Block: (tree::UnknownBlock, Location, Location) = {
     <ocl:@L> "{" <ocr:@R> <open_curly_comment: Comment?> "EOL"
     <body: BehaviorBlockLine*>
-    <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
+    <ccl:@L> "}" <close_curly_comment: Comment?> END
         => (
             tree::UnknownBlock {
                 open_curly_line: ocl.line,
@@ -185,7 +185,7 @@ SetBlock: Line = {
     <set_block_comment: Comment?> "EOL"?
     <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
     <body: SetBlockLine*>
-    <ccl:@L> "}" <else_value: VariableStrings?><close_curly_comment: Comment?> "EOL"
+    <ccl:@L> "}" <else_value: VariableStrings?><close_curly_comment: Comment?> END
         => Line::SetBlock { 
             set_block: tree::SetBlock{
                 set_block_comment: None,
@@ -206,6 +206,10 @@ SetBlock: Line = {
         },
 }
 
+END: () = {
+  "EOL" => {},
+  "EOF" => {},
+}
 
 // ---------------------------------------------------------------------------
 // Token Definitions 
@@ -221,6 +225,7 @@ extern {
         QuoteEnd => Token::QuoteEnd,
         "ValueString" => Token::ValueString(<&'input str>),
         "EOL" => Token::EOL,
+        "EOF" => Token::EOF,
         "EnvVariable" => Token::EnvVariable(<&'input str>),
         "PartialEnvVariable" => Token::PartialEnvVariable(<&'input str>),
         "int" => Token::Integer(<i64>, <&'input str>),

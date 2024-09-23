@@ -17,7 +17,7 @@ pub Line: Line = {
     IfNotDef => <>,
     MacroDefine => <>,
     MacroInclude => <>,
-    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> END => Line::EndOfLine{line: l.line, index: l.index},
     UnknownMacro => <>,
     <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => { 
@@ -46,7 +46,7 @@ pub Line: Line = {
 }
 
 MacroDefine: Line = {
-    <indent: WhiteSpace?> <ml:@L> <d:"#define"> <mr:@R> WhiteSpace+ <definition:MacroDefinition> <el:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> <d:"#define"> <mr:@R> WhiteSpace+ <definition:MacroDefinition> <el:@L> END => 
         Line::Macro{
             macro_type: MacroType::Define{definition, range: TokenRange::new_line(ml,mr).unwrap()}, 
             comment: None, 
@@ -66,7 +66,7 @@ MacroDefinition: MacroDefinition = {
 }
 
 MacroInclude: Line = {
-    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>END => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
@@ -78,7 +78,7 @@ MacroInclude: Line = {
             indent: indent.unwrap_or_default().into(),
         }
     },
-    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace* <el:@L>END => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
@@ -91,7 +91,7 @@ MacroInclude: Line = {
         }
     },
     // Quote
-    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>END => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::Quote(path),
@@ -103,7 +103,7 @@ MacroInclude: Line = {
             indent: indent.unwrap_or_default().into(),
         }
     },
-    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace* <el:@L>"EOL" => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:Quote> <pr:@R> WhiteSpace* <el:@L>END => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::Quote(path),
@@ -118,7 +118,7 @@ MacroInclude: Line = {
 }
 
 UnknownMacro: Line = {
-     <indent: WhiteSpace?> <l:@L> <m:"#unknown"> <r:@R> DropTokens* "EOL" => {
+     <indent: WhiteSpace?> <l:@L> <m:"#unknown"> <r:@R> DropTokens* END => {
         let e = lalrpop_util::ErrorRecovery { 
                 error: lalrpop_util::ParseError::User {
                     error: PlugParseError::new_unknown_macro(l, m)
@@ -245,7 +245,7 @@ IfDefBranch: tree::IfDefBranch = {
             body: body.unwrap_or_default().into(),
             branch: Box::new(branch),
         },
-    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> END => 
         tree::IfDefBranch::Else {
             line: ml.line,
             line_end_index: el.index,
@@ -257,7 +257,7 @@ IfDefBranch: tree::IfDefBranch = {
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
             endif_indent: endif_indent.unwrap_or_default().into(),
         },
-    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> END => 
         tree::IfDefBranch::EndIf {
             line: ml.line,
             line_end_index: el.index,
@@ -299,7 +299,7 @@ IfNotDef: Line = {
 }
 
 IfNotDefBranch: tree::IfNotDefBranch = {
-    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#else" <mr:@R> WhiteSpace* <el:@L> "EOL" <body:Line+?> <endif_indent: WhiteSpace?> <endl:@L> "#endif" <endr:@R> WhiteSpace* <eel:@L> END => 
         tree::IfNotDefBranch::Else {
             line: ml.line,
             line_end_index: el.index,
@@ -311,7 +311,7 @@ IfNotDefBranch: tree::IfNotDefBranch = {
             endif_macro_range: TokenRange::new_line(endl,endr).unwrap(),
             endif_indent: endif_indent.unwrap_or_default().into(),
         },
-    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> "EOL" => 
+    <indent: WhiteSpace?> <ml:@L> "#endif" <mr:@R> WhiteSpace* <el:@L> END => 
         tree::IfNotDefBranch::EndIf {
             line: ml.line,
             line_end_index: el.index,
@@ -328,6 +328,10 @@ IfNotDefClauses: tree::IfNotDefClauses = {
     },
 }
 
+END: () = {
+  "EOL" => {},
+  "EOF" => {},
+}
 
 // ---------------------------------------------------------------------------
 // Token Definitions 
@@ -342,6 +346,7 @@ extern {
         QuoteEnd => Token::QuoteEnd,
         "ValueString" => Token::ValueString(<&'input str>),
         "EOL" => Token::EOL,
+        "EOF" => Token::EOF,
         "PlugVariable" => Token::PlugVariable(<&'input str>),
         "PartialPlugVariable" => Token::PartialPlugVariable(<&'input str>),
         "PlugUpperVariable" => Token::PlugUpperVariable(<&'input str>),

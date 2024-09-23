@@ -59,6 +59,7 @@ pub struct Lexer<'input> {
     char_count: usize,
     start_of_line: bool,
     token_queue: TokenQueue<'input>,
+    reached_eof: bool,
 }
 
 impl<'input> Lexer<'input> {
@@ -82,6 +83,7 @@ impl<'input> Lexer<'input> {
             char_count: 0,
             start_of_line: true,
             token_queue: TokenQueue::new(),
+            reached_eof: false,
         }
     }
 
@@ -612,8 +614,7 @@ impl<'input> Lexer<'input> {
             match c {
                 '\n' => {
                     self.tokenize_new_line(i, true);
-                    // Break out of the tokenize for-loop after each line
-                    break;
+                    return;
                 }
                 c if (c == '$' && cc == '(') => {
                     // drop the unhandled tokens before this because we are not
@@ -639,13 +640,20 @@ impl<'input> Lexer<'input> {
                         }
                     });
                 }
-                '#' => self.tokenize_macro(i),
+                '#' => {
+                    self.tokenize_macro(i);
+                    return;
+                }
                 _ => {}
             }
         }
 
         // NOTE: There could still be tokens to be parse, but we don't care
         // about them.
+        if !self.reached_eof {
+            self.push_token(self.input.len(), Token::EOF, self.input.len());
+            self.reached_eof = true;
+        }
     }
 }
 

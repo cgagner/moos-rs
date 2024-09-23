@@ -13,12 +13,12 @@ pub Lines: tree::Lines = {
 }
 
 pub Line: Line = {
-    <l:@L> "EOL" => Line::EndOfLine{line: l.line, index: l.index},
-    <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
+    <l:@L> END => Line::EndOfLine{line: l.line, index: l.index},
+    <l:@L> <comment:Comment> <r:@R> END => Line::Comment{comment, line: l.line},
     <l:@L> <assignment:Assignment> => Line::Assignment{assignment, line: l.line},
     Define => <>,
     ProcessConfig => <>,
-    <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    <l:@L> <variable:Variable> END => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
         Line::Error{start_line: l.line, end_line: r.line}
@@ -66,7 +66,7 @@ Comment: tree::Comment = {
 }
 
 Assignment: tree::Assignment = {
-    <name:VariableStrings> "=" <value:Value*> <comment: Comment?> "EOL" => tree::Assignment{name, value: value.into(), comment},
+    <name:VariableStrings> "=" <value:Value*> <comment: Comment?> END => tree::Assignment{name, value: value.into(), comment},
 }
 
 Define: Line = {
@@ -95,7 +95,7 @@ ProcessConfig: Line = {
     <prelude_comments: CommentOrEmptyLine*>
     <ocl:@L> "{" <open_curly_comment: Comment?> "EOL"
     <body: ProcessConfigLine*>
-    <ccl:@L> "}" <close_curly_comment: Comment?> "EOL"
+    <ccl:@L> "}" <close_curly_comment: Comment?> END
         => Line::ProcessConfig { 
             process_config: tree::ProcessConfig{
                 process_config_comment,
@@ -114,6 +114,10 @@ ProcessConfig: Line = {
         },
 }
 
+END: () = {
+  "EOL" => {},
+  "EOF" => {},
+}
 
 // ---------------------------------------------------------------------------
 // Token Definitions 
@@ -129,6 +133,7 @@ extern {
         QuoteEnd => Token::QuoteEnd,
         "ValueString" => Token::ValueString(<&'input str>),
         "EOL" => Token::EOL,
+        "EOF" => Token::EOF,
         "EnvVariable" => Token::EnvVariable(<&'input str>),
         "PartialEnvVariable" => Token::PartialEnvVariable(<&'input str>),
         "int" => Token::Integer(<i64>, <&'input str>),

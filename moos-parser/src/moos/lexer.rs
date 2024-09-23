@@ -57,6 +57,7 @@ pub struct Lexer<'input> {
     trim_start: bool,
     trim_end: bool,
     token_queue: TokenQueue<'input>,
+    reached_eof: bool,
 }
 
 impl<'input> Lexer<'input> {
@@ -83,6 +84,7 @@ impl<'input> Lexer<'input> {
             trim_start: true,
             trim_end: false,
             token_queue: TokenQueue::new(),
+            reached_eof: false,
         }
     }
 
@@ -521,7 +523,6 @@ impl<'input> Lexer<'input> {
         //
         // Ignore other tokens
 
-        let mut found_new_line = false;
         while let Some(((i, c), (_ii, cc))) = self.iter.find(|&((_i, c), (_ii, cc))| {
             c == '\n'
                 || (c == '/' && cc == '/') // Comment
@@ -534,9 +535,7 @@ impl<'input> Lexer<'input> {
             match c {
                 '\n' => {
                     self.tokenize_new_line(i, false);
-                    found_new_line = true;
-                    // Break out of the tokenize for-loop after each line
-                    break;
+                    return;
                 }
                 '/' => self.tokenize_comment(i),
                 c if (c == '$' && cc == '{') => {
@@ -561,16 +560,19 @@ impl<'input> Lexer<'input> {
             }
         }
 
-        if !found_new_line {
-            // Should only get in here if we have reached the end of the input.
-            // If so, check that there isn't some straggling unhandled string.
-            self.trim_end = true;
-            if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
-                if !unhandled.is_empty() {
-                    self.scan_keywords_and_values(unhandled, prev_i);
-                }
-                self.previous_index = self.get_safe_index(self.input.len());
+        // Should only get in here if we have reached the end of the input.
+        // If so, check that there isn't some straggling unhandled string.
+        self.trim_end = true;
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
+            if !unhandled.is_empty() {
+                self.scan_keywords_and_values(unhandled, prev_i);
             }
+            self.previous_index = self.get_safe_index(self.input.len());
+        }
+
+        if !self.reached_eof {
+            self.push_token(self.input.len(), Token::EOF, self.input.len());
+            self.reached_eof = true;
         }
     }
 }
