@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-    ops::Index,
-};
+use std::{collections::HashMap, fmt::Debug, ops::Index};
 
 macro_rules! add_as {
     ($name:ident, $t:ty) => {

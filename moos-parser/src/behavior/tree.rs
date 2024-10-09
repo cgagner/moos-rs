@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-
 use crate::base::{TreeNode, VariableMarker};
 use crate::lexers::TokenRange;
 use crate::vec_wrapper;
