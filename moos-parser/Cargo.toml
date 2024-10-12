@@ -5,16 +5,20 @@ edition = "2021"
 build = "build.rs"
 
 [features]
-default = []
+default = ["moos-parser"]
+all-parsers = ["behavior-parser", "moos-parser", "plug-parser"]
+behavior-parser = []
 lsp-types = ["dep:lsp-types"]
+moos-parser = []
+plug-parser = []
 threadsafe-tree = []
 
 [dependencies]
 regex = "1"
-lalrpop-util = {version = "0.19.12", features = ["lexer"]}
+lalrpop-util = { version = "0.19.12", features = ["lexer"] }
 log = "0.4"
 tracing = "0.1.40"
-lsp-types = {version = "0.95.1", optional = true}
+lsp-types = { version = "0.95.1", optional = true }
 
 
 [dev-dependencies]
@@ -22,5 +26,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 anyhow = "1.0.81"
 
 [build-dependencies]
-lalrpop = {version = "0.19.12", features = ["lexer"]}
-
+lalrpop = { version = "0.19.12", features = ["lexer"] }

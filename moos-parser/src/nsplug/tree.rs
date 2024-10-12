@@ -3,7 +3,7 @@ use crate::lexers::TokenRange;
 use crate::vec_wrapper;
 use crate::TreeStr;
 #[cfg(feature = "lsp-types")]
-use crate::{create_text_edit, TextFormatter};
+use crate::{create_text_edit, FormatOptions, TextFormatter};
 
 pub const DEFINE_STR: &str = "#define";
 pub const INCLUDE_STR: &str = "#include";

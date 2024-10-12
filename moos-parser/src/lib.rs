@@ -1,9 +1,12 @@
-pub mod ast;
+// pub mod ast;
 pub mod base;
+#[cfg(feature = "behavior-parser")]
 pub mod behavior;
 pub mod helpers;
 pub mod lexers;
+#[cfg(feature = "moos-parser")]
 pub mod moos;
+#[cfg(feature = "plug-parser")]
 pub mod nsplug;
 
 /// Type of Str used in parse trees. This type needs to own the str
@@ -20,21 +23,27 @@ pub type TreeStr = Box<str>;
 #[cfg(feature = "threadsafe-tree")]
 pub type TreeStr = std::sync::Arc<str>;
 
+#[cfg(feature = "moos-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type MoosParser = moos::moos::LinesParser;
 
+#[cfg(feature = "moos-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type MoosLexer<'input> = moos::lexer::Lexer<'input>;
 
+#[cfg(feature = "plug-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugLexer<'input> = nsplug::lexer::Lexer<'input>;
 
+#[cfg(feature = "plug-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type PlugParser = nsplug::nsplug::LinesParser;
 
+#[cfg(feature = "behavior-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type BehaviorParser = behavior::behavior::LinesParser;
 
+#[cfg(feature = "behavior-parser")]
 #[allow(clippy::all, dead_code, unused_imports, unused_mut)]
 pub type BehaviorLexer<'input> = behavior::lexer::Lexer<'input>;
 
@@ -96,6 +105,7 @@ pub trait TextFormatter {
 }
 
 #[cfg(test)]
+#[cfg(feature = "plug-parser")]
 mod tests {
 
     use crate::{PlugLexer, PlugParser};
