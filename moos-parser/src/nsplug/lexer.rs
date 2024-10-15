@@ -270,17 +270,19 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    fn tokenize_macro(&mut self, i: usize) {
+    /// Tokenize macros starting at position `_i`.
+    /// Returns true if a token is parsed; false if no tokens are parsed.
+    fn tokenize_macro(&mut self, i: usize) -> bool {
         // If its not the start of the line, it can't be a macro.
         if !self.start_of_line {
-            return;
+            return false;
         }
 
         // Make sure the current line starts with nothing but whitespace before
         // the '#'
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.trim().is_empty() {
-                return;
+                return false;
             }
             // Push the indent as a whitespace token.
             self.push_token(prev_i, Token::WhiteSpace(unhandled), i);
@@ -307,7 +309,7 @@ impl<'input> Lexer<'input> {
             match ccc {
                 '\n' => {
                     // Handle this back in the main tokenize method
-                    return;
+                    return false;
                 }
                 _ => {}
             }
@@ -318,7 +320,7 @@ impl<'input> Lexer<'input> {
             let token = Self::get_macro_token(line);
             self.push_token(i, token, self.input.len());
             self.previous_index = None;
-            return;
+            return true;
         };
 
         let is_include = match token {
@@ -358,12 +360,12 @@ impl<'input> Lexer<'input> {
                 }
                 '\n' => {
                     self.tokenize_new_line(i, false);
-                    return;
+                    return true;
                 }
                 '"' => {
                     let found_quote = self.tokenize_quote(i);
                     if !found_quote {
-                        return;
+                        return false;
                     }
                 }
                 c if (c == '$' && cc == '(') => {
@@ -376,7 +378,7 @@ impl<'input> Lexer<'input> {
                             }
                         });
                     if !found_variable {
-                        return;
+                        return false;
                     }
                 }
                 c if (c == '%' && cc == '(') => {
@@ -389,7 +391,7 @@ impl<'input> Lexer<'input> {
                             }
                         });
                     if !found_variable {
-                        return;
+                        return false;
                     }
                 }
                 '|' => {
@@ -413,6 +415,7 @@ impl<'input> Lexer<'input> {
             }
             self.previous_index = self.get_safe_index(self.input.len());
         }
+        return true;
     }
 
     fn tokenize_new_line(&mut self, i: usize, drop_unhandled: bool) {
@@ -641,8 +644,9 @@ impl<'input> Lexer<'input> {
                     });
                 }
                 '#' => {
-                    self.tokenize_macro(i);
-                    return;
+                    if self.tokenize_macro(i) {
+                        return;
+                    }
                 }
                 _ => {}
             }

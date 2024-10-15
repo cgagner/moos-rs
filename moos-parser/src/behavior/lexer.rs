@@ -295,15 +295,17 @@ impl<'input> Lexer<'input> {
         );
     }
 
-    fn tokenize_macro(&mut self, _i: usize) {
+    /// Tokenize macros starting at position `_i`.
+    /// Returns true if a token is parsed; false if no tokens are parsed.
+    fn tokenize_macro(&mut self, _i: usize) -> bool {
         // If its not the start of the line, it can't be a macro.
         if !self.start_of_line {
-            return;
+            return false;
         }
 
         if let Some((_prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
             if !unhandled.trim_start().starts_with("#") {
-                return;
+                return false;
             }
         }
         // Skip lines that start with #
@@ -316,7 +318,7 @@ impl<'input> Lexer<'input> {
                     // Setting the previous index to drop previous tokens
                     self.previous_index = self.get_safe_index(i);
                     self.tokenize_new_line(i, false);
-                    return;
+                    return true;
                 }
                 _ => {}
             }
@@ -324,6 +326,7 @@ impl<'input> Lexer<'input> {
 
         // Should only get in here if we have reached the end of the input.
         self.previous_index = self.get_safe_index(self.input.len());
+        return true;
     }
 
     fn tokenize_new_line(&mut self, i: usize, drop_unhandled: bool) {
@@ -590,7 +593,11 @@ impl<'input> Lexer<'input> {
                         break;
                     }
                 }
-                '#' => self.tokenize_macro(i),
+                '#' => {
+                    if self.tokenize_macro(i) {
+                        return;
+                    }
+                }
                 '{' => self.tokenize_curly_brace(i, Token::CurlyOpen),
                 '}' => self.tokenize_curly_brace(i, Token::CurlyClose),
                 ',' => self.tokenize_comma(i),
