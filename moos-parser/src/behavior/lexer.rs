@@ -41,6 +41,8 @@ pub enum Token<'input> {
     AssignmentOp,
     CurlyOpen,
     CurlyClose,
+    MoosSkipBegin(&'input str),
+    MoosSkipEnd(&'input str),
     Comma,
     /// End of Line
     EOL,
@@ -480,21 +482,27 @@ impl<'input> Lexer<'input> {
         }
         // Comment - Skip over the second slash
         let _r = self.iter.next();
-        if let Some(((ii, _cc), (_iii, _ccc))) =
+        let (text, index, new_line) = if let Some(((ii, _cc), (_iii, _ccc))) =
             self.iter.find(|&((_ii, cc), (_iii, _ccc))| cc == '\n')
         {
-            self.push_token(i, Token::Comment(&self.input[i + 2..ii].trim()), ii);
             self.previous_index = self.get_safe_index(ii + 1);
-
-            self._handle_new_line(ii);
+            (&self.input[i + 2..ii].trim(), ii, true)
         } else {
             // Reached the end of the input
-            self.push_token(
-                i,
-                Token::Comment(&self.input[i + 2..].trim()),
-                self.input.len(),
-            );
             self.previous_index = None;
+            (&self.input[i + 2..].trim(), self.input.len(), false)
+        };
+
+        if text.eq_ignore_ascii_case("moos-skip-begin") {
+            self.push_token(i, Token::MoosSkipBegin(text), index);
+        } else if text.eq_ignore_ascii_case("moos-skip-end") {
+            self.push_token(i, Token::MoosSkipEnd(text), index);
+        } else {
+            self.push_token(i, Token::Comment(text), index);
+        }
+
+        if new_line {
+            self._handle_new_line(index);
         }
     }
 

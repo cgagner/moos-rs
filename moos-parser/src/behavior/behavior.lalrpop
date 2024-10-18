@@ -35,6 +35,7 @@ pub Line: Line = {
       }
     },
     SetBlock => <>,
+    SkipBlock => <>,
     <l:@L> <variable:Variable> END => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
@@ -122,6 +123,7 @@ BehaviorBlockLine: Line = {
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     <l:@L> <assignment:Assignment> "EOL" => Line::Assignment{assignment, line: l.line},
     Initialize => <>,
+    SkipBlock => <>,
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
@@ -174,6 +176,7 @@ SetBlockLine: Line = {
     <l:@L> <comment:Comment> <r:@R> "EOL" => Line::Comment{comment, line: l.line},
     <l:@L> <assignment:Assignment> "EOL" => Line::Assignment{assignment, line: l.line},
     <l:@L> <variable:Variable> "EOL" => Line::Variable{variable, line: l.line},
+    SkipBlock => <>,
     <l:@L> <error:!> <r:@R> => {
         state.errors.push(error); 
         Line::Error{start_line: l.line, end_line: r.line}
@@ -206,6 +209,39 @@ SetBlock: Line = {
         },
 }
 
+SkipBlock: Line = {
+  <bl:@L> <begin_text:"SkipBegin"> <br:@R> "EOL" AnyToken+ <el:@L> <end_text: "SkipEnd"> <er:@R> END => 
+    Line::MultiLine { 
+      lines: vec![
+        Line::Comment{comment: tree::Comment::new(begin_text.into(), TokenRange::new_line(bl,br).expect("Invalid token range while parsing `MoosSkipBegin`")), line: bl.line},
+        Line::Comment{comment: tree::Comment::new(end_text.into(), TokenRange::new_line(el,er).expect("Invalid token range while parsing `MoosSkipEnd`")), line: el.line}
+      ].into(), 
+      start_line: bl.line,
+    }
+}
+
+AnyToken: () = {
+  "Comment",
+  QuoteBegin,
+  QuoteEnd,
+  "ValueString",
+  "EOL",
+  "EOF",
+  "EnvVariable",
+  "PartialEnvVariable",
+  "int",
+  "float",
+  "bool",
+  "=",
+  "initialize",
+  "initialize_",
+  "BehaviorBlock",
+  "Set",
+  "{",
+  "}",
+  ",",
+}
+
 END: () = {
   "EOL" => {},
   "EOF" => {},
@@ -236,6 +272,8 @@ extern {
         "initialize_" => Token::DeferredInitializeKeyword,
         "BehaviorBlock" => Token::BehaviorBlockKeyword,
         "Set" => Token::SetBlockKeyword,
+        "SkipBegin" => Token::MoosSkipBegin(<&'input str>),
+        "SkipEnd" => Token::MoosSkipEnd(<&'input str>),
         "{" => Token::CurlyOpen,
         "}" => Token::CurlyClose,
         "," => Token::Comma,

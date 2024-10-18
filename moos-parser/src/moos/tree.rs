@@ -218,6 +218,10 @@ pub enum Line {
         line: u32,
         index: u32,
     },
+    MultiLine {
+        lines: Lines,
+        start_line: u32,
+    },
 }
 
 impl Line {
@@ -244,6 +248,10 @@ impl Line {
                 end_line: _,
             } => *start_line,
             Line::EndOfLine { line, index: _ } => *line,
+            Line::MultiLine {
+                lines: _,
+                start_line,
+            } => *start_line,
         }
     }
 }
@@ -272,6 +280,16 @@ impl TreeNode for Line {
                 end_line: _,
             } => 0,
             Line::EndOfLine { line: _, index } => *index,
+            Line::MultiLine {
+                lines,
+                start_line: _,
+            } => {
+                if let Some(line) = lines.first() {
+                    line.get_start_index()
+                } else {
+                    0
+                }
+            }
         }
     }
 
@@ -298,6 +316,16 @@ impl TreeNode for Line {
                 end_line: _,
             } => 0,
             Line::EndOfLine { line: _, index } => *index,
+            Line::MultiLine {
+                lines,
+                start_line: _,
+            } => {
+                if let Some(line) = lines.first() {
+                    line.get_end_index()
+                } else {
+                    self.get_start_index()
+                }
+            }
         }
     }
 }
@@ -328,6 +356,16 @@ impl ToString for Line {
                 end_line: _,
             } => "".to_string(),
             Line::EndOfLine { line: _, index: _ } => "".to_string(),
+            Line::MultiLine {
+                lines,
+                start_line: _,
+            } => {
+                if let Some(line) = lines.first() {
+                    line.to_string()
+                } else {
+                    "".to_string()
+                }
+            }
         }
     }
 }
