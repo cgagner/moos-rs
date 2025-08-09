@@ -571,8 +571,6 @@ impl<'input> Lexer<'input> {
             }
         }
 
-        tracing::info!("Tokenizing tag");
-
         let mut iter = self.iter.clone();
 
         let ii = if let Some(((ii, cc), (_iii, _ccc))) =
@@ -598,35 +596,27 @@ impl<'input> Lexer<'input> {
             }
         }
         // We've found the <tag> keyword
-        tracing::info!("Found Tag Keyword.");
         self.iter = iter;
 
         // Need to push any unhandled tokens into the buffer before
         // the <tag>. Reset the previous index
         self.previous_index = index_before_tag;
-        tracing::info!("About to push whitespace: {}", self.char_count);
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
             if !unhandled.is_empty() && unhandled.trim().is_empty() {
                 // Push the indent as a whitespace token.
-                tracing::info!(
-                    "Pushing whitespace '{unhandled}' i:{i} char_count: {}",
-                    self.char_count
-                );
                 self.push_token(prev_i, Token::WhiteSpace(unhandled), i);
             }
             self.previous_index = self.get_safe_index(i);
         }
 
-        tracing::info!("Pushed whitespace i: {i} char_count: {}", self.char_count);
-
         self.push_token(i, Token::LeftAngleBracket, i + 1);
         self.previous_index = self.get_safe_index(i + 1);
-        tracing::info!("Pushed LeftAngleBracket");
+
         self.push_token(i + 1, Token::TagKeyword, ii);
-        tracing::info!("Pushed TagKeyword");
+
         self.push_token(ii, Token::RightAngleBracket, ii + 1);
         self.previous_index = self.get_safe_index(ii + 1);
-        tracing::info!("Pushed RightAngleBracket");
+
         // Now process the tag name
 
         let (ii, next_index) = if let Some(((ii, cc), (_iii, ccc))) =

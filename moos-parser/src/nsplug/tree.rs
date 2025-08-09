@@ -280,7 +280,6 @@ impl MacroType {
             || (start_index + new_text.len() as u32) != line_end_index
         {
             let new_text = indent + new_text.as_str();
-            tracing::info!("Formatting line({line}): '{new_text}'");
             lines.push(create_text_edit(new_text, line, 0, line_end_index));
         }
 
@@ -703,7 +702,6 @@ impl TextFormatter for IfDefBranch {
                     || (start_index + new_text.len() as u32) != *line_end_index
                 {
                     let new_text = new_indent.clone() + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
                 }
 
@@ -730,7 +728,6 @@ impl TextFormatter for IfDefBranch {
                     || (start_index + new_text.len() as u32) != *line_end_index
                 {
                     let new_text = new_indent.clone() + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
                 }
 
@@ -745,7 +742,6 @@ impl TextFormatter for IfDefBranch {
                     || (start_index + new_text.len() as u32) != *endif_line_end_index
                 {
                     let new_text = new_indent + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(
                         new_text,
                         *endif_line,
@@ -765,7 +761,6 @@ impl TextFormatter for IfDefBranch {
                     || (start_index + new_text.len() as u32) != *line_end_index
                 {
                     let new_text = new_indent + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
                 }
             }
@@ -886,7 +881,6 @@ impl TextFormatter for IfNotDefBranch {
                     || (start_index + new_text.len() as u32) != *line_end_index
                 {
                     let new_text = new_indent.clone() + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
                 }
 
@@ -901,7 +895,6 @@ impl TextFormatter for IfNotDefBranch {
                     || (start_index + new_text.len() as u32) != *endif_line_end_index
                 {
                     let new_text = new_indent + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(
                         new_text,
                         *endif_line,
@@ -921,7 +914,6 @@ impl TextFormatter for IfNotDefBranch {
                     || (start_index + new_text.len() as u32) != *line_end_index
                 {
                     let new_text = new_indent + new_text.as_str();
-                    tracing::info!("Formatting line({line}): '{new_text}'");
                     lines.push(create_text_edit(new_text, *line, 0, *line_end_index));
                 }
             }
