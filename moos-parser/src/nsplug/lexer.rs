@@ -36,6 +36,7 @@ pub enum Token<'input> {
     MacroElseIfDef,
     MacroElse,
     MacroEndIf,
+    TagKeyword,
     UnknownMacro(&'input str),
     OrOperator,
     AndOperator,
@@ -551,6 +552,104 @@ impl<'input> Lexer<'input> {
         return false;
     }
 
+    /// Tokenize a tag.
+    /// Returns true if a full tag is found; false if the end of the line
+    /// or end of the file is reached without finding the matching chevron.
+    fn tokenize_tag(&mut self, i: usize) -> bool {
+        // If its not the start of the line, it can't be a macro.
+        if !self.start_of_line {
+            return false;
+        }
+
+        // Make sure the current line starts with nothing but whitespace before
+        // the '<'
+        if let Some((_prev_i, unhandled)) = self.get_unhandled_string(i) {
+            if !unhandled.trim().is_empty() {
+                return false;
+            }
+        }
+
+        tracing::info!("Tokenizing tag");
+
+        let mut iter = self.iter.clone();
+
+        let ii = if let Some(((ii, cc), (_iii, _ccc))) =
+            iter.find(|&((_ii, cc), (_iii, ccc))| cc == '>' || ccc == '\n')
+        {
+            match cc {
+                '>' => ii,
+                _ => return false,
+            }
+        } else {
+            return false;
+        };
+
+        let index_before_tag = self.previous_index;
+
+        self.previous_index = self.get_safe_index(i);
+        // Push any unhandled tokens before the RightAngleBracket
+        if let Some((_prev_i, unhandled)) = self.get_unhandled_string(ii) {
+            if !unhandled.is_empty() {
+                if !unhandled.eq_ignore_ascii_case("<tag") {
+                    return false;
+                }
+            }
+        }
+        // We've found the <tag> keyword
+        tracing::info!("Found Tag Keyword.");
+        self.iter = iter;
+
+        // Need to push any unhandled tokens into the buffer before
+        // the <tag>. Reset the previous index
+        self.previous_index = index_before_tag;
+        tracing::info!("About to push whitespace: {}", self.char_count);
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(i) {
+            if !unhandled.is_empty() && unhandled.trim().is_empty() {
+                // Push the indent as a whitespace token.
+                tracing::info!(
+                    "Pushing whitespace '{unhandled}' i:{i} char_count: {}",
+                    self.char_count
+                );
+                self.push_token(prev_i, Token::WhiteSpace(unhandled), i);
+            }
+            self.previous_index = self.get_safe_index(i);
+        }
+
+        tracing::info!("Pushed whitespace i: {i} char_count: {}", self.char_count);
+
+        self.push_token(i, Token::LeftAngleBracket, i + 1);
+        self.previous_index = self.get_safe_index(i + 1);
+        tracing::info!("Pushed LeftAngleBracket");
+        self.push_token(i + 1, Token::TagKeyword, ii);
+        tracing::info!("Pushed TagKeyword");
+        self.push_token(ii, Token::RightAngleBracket, ii + 1);
+        self.previous_index = self.get_safe_index(ii + 1);
+        tracing::info!("Pushed RightAngleBracket");
+        // Now process the tag name
+
+        let (ii, next_index) = if let Some(((ii, cc), (_iii, ccc))) =
+            self.iter.find(|&((_ii, _cc), (_iii, ccc))| ccc == '\n')
+        {
+            match ccc {
+                '\n' => (ii + 1, self.get_safe_index(ii + 1)),
+                _ => return true,
+            }
+        } else {
+            (self.input.len(), None)
+        };
+
+        if let Some((prev_i, unhandled)) = self.get_unhandled_string(ii) {
+            if unhandled.trim().is_empty() {
+                // Push the indent as a whitespace token.
+                self.push_token(prev_i, Token::WhiteSpace(unhandled), i);
+            } else {
+                self.scan_value(unhandled, prev_i);
+            }
+        }
+        self.previous_index = next_index;
+        return false;
+    }
+
     /// Tokenize a Plug variable
     /// Returns true if a full variable is parsed; false if the end of the line
     /// or end of the file is reached without finding the ending token.
@@ -605,6 +704,7 @@ impl<'input> Lexer<'input> {
         //   2. Plug variable
         //   3. Plug upper variable
         //   4. Macro
+        //   5. Tag
         //
         // Ignore other tokens
 
@@ -613,6 +713,7 @@ impl<'input> Lexer<'input> {
                 || (c == '$' && cc == '(') // Plug variable
                 || (c == '%' && cc == '(') // Plug Upper Variable
                 || (c == '#') // Macro
+                || (c == '<' && cc == 't'  && self.start_of_line) // Tag
         }) {
             match c {
                 '\n' => {
@@ -645,6 +746,11 @@ impl<'input> Lexer<'input> {
                 }
                 '#' => {
                     if self.tokenize_macro(i) {
+                        return;
+                    }
+                }
+                '<' => {
+                    if self.tokenize_tag(i) {
                         return;
                     }
                 }

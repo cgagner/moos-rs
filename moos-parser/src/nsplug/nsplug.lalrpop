@@ -2,7 +2,7 @@ use std::str::FromStr;
 use crate::lexers::{Location, TokenRange};
 use crate::nsplug::error::PlugParseError;
 use crate::nsplug::lexer::{State, Token};
-use crate::nsplug::tree::{self, MacroDefinition, MacroCondition, MacroType, Line};
+use crate::nsplug::tree::{self, MacroDefinition, MacroCondition, MacroType, Line, Tag};
 use lalrpop_util::ErrorRecovery;
 
 //grammar<'input>(input: &'input str);
@@ -17,6 +17,7 @@ pub Line: Line = {
     IfNotDef => <>,
     MacroDefine => <>,
     MacroInclude => <>,
+    TagLine => <>,
     <l:@L> END => Line::EndOfLine{line: l.line, index: l.index},
     UnknownMacro => <>,
     <l:@L> <variable:Variable> => Line::Variable{variable, line: l.line},
@@ -56,6 +57,18 @@ MacroDefine: Line = {
         },
 }
 
+TagLine: Line = {
+  <indent: WhiteSpace?> <l:@L> "<" "tag" ">" <r:@R> WhiteSpace* <tag: VariableString> WhiteSpace* <el:@L>END => 
+      Line::Tag {
+          tag: Tag{tag: tag, is_macro: false, range: TokenRange::new_line(l,r).unwrap()},
+          comment: None, 
+          line: l.line,
+          line_end_index: el.index,
+          indent: indent.unwrap_or_default().into(),
+      },
+      // TODO: Need to handle when there are no <>
+}
+
 MacroDefinition: MacroDefinition = {
     <name:VariableStrings> WhiteSpace+ <values:Values> WhiteSpace* => {
         MacroDefinition::new(name, values.into())
@@ -66,7 +79,7 @@ MacroDefinition: MacroDefinition = {
 }
 
 MacroInclude: Line = {
-    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> <el:@L>END => {
+    <indent: WhiteSpace?> <ml:@L> <d:"#include"> <mr:@R>  WhiteSpace+ <pl:@L> <path:IncludeString> <pr:@R> WhiteSpace+ <tag: IncludeTag> WhiteSpace* <el:@L>END => {
         Line::Macro{
             macro_type: MacroType::Include{
                 path: tree::IncludePath::VariableStrings(path, TokenRange::new_line(pl,pr).expect("Invalid token range while parsing `IncludePath`")),
@@ -207,11 +220,6 @@ IncludeString: tree::VariableStrings = {
 
 Quote: tree::Quote = {
     <l:@L> QuoteBegin <content: Value*> QuoteEnd <r:@R> => tree::Quote{content: content.into(), range: TokenRange::new_line(l,r).expect("Invalid token range while parsing `Quote`")}
-}
-
-IncludePath: tree::IncludePath = {
-    <l:@L> <content: IncludeString> <r:@R> => tree::IncludePath::VariableStrings(content, TokenRange::new_line(l,r).expect("Invalid token range while parsing `IncludePath`")),
-    <quote: Quote> => tree::IncludePath::Quote(quote),
 }
 
 IncludeTag: tree::IncludeTag = {
@@ -362,6 +370,7 @@ extern {
         "#ifndef" => Token::MacroIfNotDef,
         "#include" => Token::MacroInclude,
         "#unknown" => Token::UnknownMacro(<&'input str>),
+        "tag" => Token::TagKeyword,
         "||" => Token::OrOperator,
         "&&" => Token::AndOperator,
         "<" => Token::LeftAngleBracket,

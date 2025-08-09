@@ -108,25 +108,36 @@ pub trait TextFormatter {
 #[cfg(feature = "plug-parser")]
 mod tests {
 
-    use crate::{PlugLexer, PlugParser};
+    use crate::{nsplug::tree::Line, PlugLexer, PlugParser};
+
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    fn init_tracing() {
+        INIT.call_once(|| {
+            use tracing::level_filters::LevelFilter;
+            use tracing_subscriber::fmt::writer::BoxMakeWriter;
+            use tracing_subscriber::prelude::*;
+            use tracing_subscriber::{EnvFilter, Registry};
+            let filter = EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env()
+                .unwrap()
+                .add_directive("moos_parser=trace".parse().unwrap());
+            let writer = BoxMakeWriter::new(std::io::stderr);
+            let fmt_layer = tracing_subscriber::fmt::layer()
+                .with_writer(writer)
+                .with_ansi(false)
+                .with_filter(filter);
+
+            Registry::default().with(fmt_layer).try_init().unwrap();
+        });
+    }
 
     #[test]
     fn test_plug_parser() -> anyhow::Result<()> {
-        use tracing::level_filters::LevelFilter;
-        use tracing_subscriber::fmt::writer::BoxMakeWriter;
-        use tracing_subscriber::prelude::*;
-        use tracing_subscriber::{EnvFilter, Registry};
-        let filter = EnvFilter::builder()
-            .with_default_directive(LevelFilter::INFO.into())
-            .from_env()?
-            .add_directive("moos_parser=trace".parse()?);
-        let writer = BoxMakeWriter::new(std::io::stderr);
-        let fmt_layer = tracing_subscriber::fmt::layer()
-            .with_writer(writer)
-            .with_ansi(false)
-            .with_filter(filter);
-
-        Registry::default().with(fmt_layer).try_init()?;
+        init_tracing();
 
         let input = r#"#include <test.plug>
         // Test Comment
@@ -180,6 +191,53 @@ mod tests {
 
         assert!(result.is_ok());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_plug_parse_tag() -> anyhow::Result<()> {
+        init_tracing();
+        let input = r#"
+        
+        #define FOO 123
+
+        ProcessConfig = Name 
+        {
+          // test
+        }
+
+        // TODO: Need to skip lines in moos files that start with <tag>
+        // TODO: Comments are broken if they contain <
+
+        <tag> <foo>
+
+
+        "#;
+
+        let lexer = PlugLexer::new(input);
+        let mut state = crate::nsplug::lexer::State::default();
+        let result = PlugParser::new().parse(&mut state, input, lexer);
+
+        println!("Result: {:?}", result);
+
+        assert!(result.is_ok());
+
+        if let Ok(lines) = result {
+            for line in lines {
+                match line {
+                    Line::Error {
+                        start_line,
+                        end_line,
+                    } => {
+                        println!("Found an error: {} {}", start_line, end_line);
+                        assert!(false)
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        println!("Finished test");
         Ok(())
     }
 }

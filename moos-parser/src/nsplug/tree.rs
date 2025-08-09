@@ -12,6 +12,7 @@ pub const IFNDEF_STR: &str = "#ifndef";
 pub const ELSEIFDEF_STR: &str = "#elseifdef";
 pub const ELSE_STR: &str = "#else";
 pub const ENDIF_STR: &str = "#endif";
+pub const TAG_STR: &str = "<tag>";
 
 #[derive(Debug, Default)]
 pub struct PlugComment;
@@ -438,6 +439,51 @@ impl ToString for MacroDefinition {
             return format!("{}", self.name.to_string());
         } else {
             return format!("{} {}", self.name.to_string(), self.value.to_string());
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Tag {
+    pub tag: VariableString,
+    pub is_macro: bool,
+    /// Range of the "#define"
+    pub range: TokenRange,
+}
+
+impl Tag {
+    /// Create a new Tag
+    pub fn new(tag: VariableString, is_macro: bool, range: TokenRange) -> Self {
+        Self {
+            tag,
+            is_macro,
+            range,
+        }
+    }
+    /// Get the TokenRange for the Macro keyword.
+    fn get_token_range(&self) -> &TokenRange {
+        &self.range
+    }
+}
+
+impl TreeNode for Tag {
+    #[inline]
+    fn get_start_index(&self) -> u32 {
+        self.get_token_range().start
+    }
+
+    #[inline]
+    fn get_end_index(&self) -> u32 {
+        self.tag.get_end_index()
+    }
+}
+
+impl ToString for Tag {
+    fn to_string(&self) -> String {
+        if self.is_macro {
+            return format!("#{TAG_STR} {}", self.tag.to_string());
+        } else {
+            return format!("{TAG_STR} {}", self.tag.to_string());
         }
     }
 }
@@ -918,6 +964,13 @@ pub enum Line {
         line: u32,
         line_end_index: u32,
     },
+    Tag {
+        tag: Tag,
+        comment: Option<Comment>,
+        line: u32,
+        line_end_index: u32,
+        indent: TreeStr,
+    },
     Macro {
         macro_type: MacroType,
         comment: Option<Comment>,
@@ -947,6 +1000,13 @@ impl Line {
                 line,
                 line_end_index: _,
             } => *line,
+            Line::Tag {
+                tag: _,
+                comment: _,
+                line,
+                line_end_index: _,
+                indent: _,
+            } => *line,
             Line::Macro {
                 macro_type: _,
                 comment: _,
@@ -974,6 +1034,13 @@ impl TreeNode for Line {
                 line: _,
                 line_end_index: _,
             } => comment.get_start_index(),
+            Line::Tag {
+                tag,
+                comment: _,
+                line: _,
+                line_end_index: _,
+                indent: _,
+            } => tag.get_start_index(),
             Line::Macro {
                 macro_type,
                 comment: _,
@@ -999,6 +1066,13 @@ impl TreeNode for Line {
                 line: _,
                 line_end_index: _,
             } => comment.get_end_index(),
+            Line::Tag {
+                tag,
+                comment: _,
+                line: _,
+                line_end_index: _,
+                indent: _,
+            } => tag.get_end_index(),
             Line::Macro {
                 macro_type,
                 comment: _,
@@ -1042,6 +1116,19 @@ impl ToString for Line {
                 line: _,
                 line_end_index: _,
             } => comment.to_string(),
+            Line::Tag {
+                tag,
+                comment,
+                line: _,
+                line_end_index: _,
+                indent: _,
+            } => {
+                if let Some(comment) = comment {
+                    format!("{} {}", tag.to_string(), comment.to_string())
+                } else {
+                    tag.to_string()
+                }
+            }
             Line::Macro {
                 macro_type,
                 comment,

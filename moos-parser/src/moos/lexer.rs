@@ -45,6 +45,13 @@ pub enum Token<'input> {
     EOF,
 }
 
+pub enum FoundToken {
+    NewLine,
+    Quote,
+    Macro,
+    Variable,
+}
+
 pub struct Lexer<'input> {
     iter: std::iter::Zip<
         CharIndices<'input>,
@@ -283,15 +290,15 @@ impl<'input> Lexer<'input> {
 
     /// Tokenize macros starting at position `_i`.
     /// Returns true if a token is parsed; false if no tokens are parsed.
-    fn tokenize_macro(&mut self, _i: usize) -> bool {
+    fn tokenize_macro(&mut self, _i: usize) -> Result<FoundToken, ()> {
         // If its not the start of the line, it can't be a macro.
         if !self.start_of_line {
-            return false;
+            return Err(());
         }
 
         if let Some((_prev_i, unhandled)) = self.get_unhandled_string(self.input.len(), true) {
             if !unhandled.trim_start().starts_with("#") {
-                return false;
+                return Err(());
             }
         }
         // Skip lines that start with #
@@ -304,7 +311,7 @@ impl<'input> Lexer<'input> {
                     // Setting the previous index to drop previous tokens
                     self.previous_index = self.get_safe_index(i);
                     self.tokenize_new_line(i, false);
-                    return true;
+                    return Ok(FoundToken::NewLine);
                 }
                 _ => {}
             }
@@ -312,7 +319,67 @@ impl<'input> Lexer<'input> {
 
         // Should only get in here if we have reached the end of the input.
         self.previous_index = self.get_safe_index(self.input.len());
-        return true;
+        return Ok(FoundToken::Macro);
+    }
+
+    /// Tokenize <tag> starting at position `_i`.
+    /// Returns true if a token is parsed; false if no tokens are parsed.
+    fn tokenize_tag(&mut self, i: usize) -> Result<FoundToken, ()> {
+        // If its not the start of the line, it can't be a macro.
+        if !self.start_of_line {
+            return Err(());
+        }
+
+        if let Some((_prev_i, unhandled)) = self.get_unhandled_string(i, false) {
+            if !unhandled.trim().is_empty() {
+                return Err(());
+            }
+        }
+
+        let mut iter = self.iter.clone();
+
+        let ii = if let Some(((ii, cc), (_iii, _ccc))) =
+            iter.find(|&((_ii, cc), (_iii, ccc))| cc == '>' || ccc == '\n')
+        {
+            match cc {
+                '>' => ii,
+                _ => return Err(()),
+            }
+        } else {
+            return Err(());
+        };
+
+        let index_before_tag = self.previous_index;
+
+        self.previous_index = self.get_safe_index(i);
+
+        if let Some((_prev_i, unhandled)) = self.get_unhandled_string(ii, false) {
+            if !unhandled.is_empty() {
+                if !unhandled.eq_ignore_ascii_case("<tag") {
+                    self.previous_index = index_before_tag;
+                    return Err(());
+                }
+            }
+        }
+        self.iter = iter;
+
+        // Found the tag keyword. Going to skip from now until the end of the
+        // line or the end of the file.
+        self.previous_index = self.get_safe_index(ii + 1);
+
+        while let Some(((i, c), (_ii, _cc))) = self.iter.find(|&((_i, c), (_ii, _cc))| c == '\n') {
+            match c {
+                '\n' => {
+                    // Setting the previous index to drop previous tokens
+                    self.previous_index = self.get_safe_index(i);
+                    self.tokenize_new_line(i, false);
+                    return Ok(FoundToken::NewLine);
+                }
+                _ => {}
+            }
+        }
+
+        return Err(());
     }
 
     fn tokenize_new_line(&mut self, i: usize, drop_unhandled: bool) {
@@ -363,7 +430,7 @@ impl<'input> Lexer<'input> {
     /// Tokenize a quote.
     /// Returns true if a full quote is found; false if the end of the line
     /// or end of the file is reached without finding the matching quote.
-    fn tokenize_quote(&mut self, i: usize) -> bool {
+    fn tokenize_quote(&mut self, i: usize) -> Result<FoundToken, ()> {
         if let Some((prev_i, unhandled)) = self.get_unhandled_string(i, true) {
             if !unhandled.is_empty() {
                 self.scan_keywords_and_values(unhandled, prev_i);
@@ -389,7 +456,7 @@ impl<'input> Lexer<'input> {
                     self.push_token(ii, Token::QuoteEnd, ii + 1);
                     self.trim_start = false;
                     self.previous_index = self.get_safe_index(ii + 1);
-                    return true;
+                    return Ok(FoundToken::Quote);
                 }
                 // Handle Variables inside of quotes
                 cc if (cc == '$' && ccc == '{') => {
@@ -406,7 +473,7 @@ impl<'input> Lexer<'input> {
                         },
                     );
                     if !found_variable {
-                        return false;
+                        return Err(());
                     }
                 }
                 '\n' => {
@@ -418,7 +485,7 @@ impl<'input> Lexer<'input> {
                     }
 
                     self._handle_new_line(ii);
-                    return false;
+                    return Ok(FoundToken::NewLine);
                 }
                 _ => {}
             }
@@ -432,7 +499,7 @@ impl<'input> Lexer<'input> {
             }
         }
         self.previous_index = None;
-        return false;
+        return Err(());
     }
 
     fn tokenize_comment(&mut self, i: usize) {
@@ -531,6 +598,7 @@ impl<'input> Lexer<'input> {
         //   6. Open/Close Curly brace
         //   7. Assignment
         //   8. # Macro => Skip entire line
+        //   9. <tag> => Skip entire line
         //
         // Ignore other tokens
 
@@ -542,6 +610,7 @@ impl<'input> Lexer<'input> {
                 || (c == '"') // Quote
                 || (c == '#') // Macro
                 || ((c == '{' || c == '}') && self.start_of_line) // Open/Close curly
+                || (c == '<' && cc == 't' && self.start_of_line) // <tag>
         }) {
             match c {
                 '\n' => {
@@ -560,17 +629,22 @@ impl<'input> Lexer<'input> {
                 }
                 '=' => self.tokenize_assignment_op(i),
                 '"' => {
-                    if !self.tokenize_quote(i) {
+                    if self.tokenize_quote(i).is_err() {
                         break;
                     }
                 }
                 '#' => {
-                    if self.tokenize_macro(i) {
+                    if let Ok(_) = self.tokenize_macro(i) {
                         return;
                     }
                 }
                 '{' => self.tokenize_curly_brace(i, Token::CurlyOpen),
                 '}' => self.tokenize_curly_brace(i, Token::CurlyClose),
+                '<' => {
+                    if let Ok(_) = self.tokenize_tag(i) {
+                        return;
+                    }
+                }
                 _ => {}
             }
         }
