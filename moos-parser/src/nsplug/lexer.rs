@@ -36,6 +36,7 @@ pub enum Token<'input> {
     MacroElseIfDef,
     MacroElse,
     MacroEndIf,
+    MacroTag,
     TagKeyword,
     UnknownMacro(&'input str),
     OrOperator,
@@ -267,6 +268,7 @@ impl<'input> Lexer<'input> {
             "ifdef" => Token::MacroIfDef,
             "ifndef" => Token::MacroIfNotDef,
             "include" => Token::MacroInclude,
+            "<tag>" => Token::MacroTag,
             _ => Token::UnknownMacro(line),
         }
     }

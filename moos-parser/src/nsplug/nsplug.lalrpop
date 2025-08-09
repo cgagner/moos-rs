@@ -66,7 +66,14 @@ TagLine: Line = {
           line_end_index: el.index,
           indent: indent.unwrap_or_default().into(),
       },
-      // TODO: Need to handle when there are no <>
+  <indent: WhiteSpace?> <l:@L> "#<tag>" <r:@R> WhiteSpace* <tag: VariableString> WhiteSpace* <el:@L>END => 
+      Line::Tag {
+          tag: Tag{tag: tag, is_macro: true, range: TokenRange::new_line(l,r).unwrap()},
+          comment: None, 
+          line: l.line,
+          line_end_index: el.index,
+          indent: indent.unwrap_or_default().into(),
+      },
 }
 
 MacroDefinition: MacroDefinition = {
@@ -369,6 +376,7 @@ extern {
         "#ifdef" => Token::MacroIfDef,
         "#ifndef" => Token::MacroIfNotDef,
         "#include" => Token::MacroInclude,
+        "#<tag>" => Token::MacroTag,
         "#unknown" => Token::UnknownMacro(<&'input str>),
         "tag" => Token::TagKeyword,
         "||" => Token::OrOperator,
